@@ -7,136 +7,174 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"strings"
-	"time"
+		reader := bufio.NewReader(os.Stdin)
 
-	"shiryu/CLI_VERSION/src/go/download"
-	"shiryu/CLI_VERSION/src/go/integrity"
-	"shiryu/CLI_VERSION/src/go/ui"
-	"shiryu/CLI_VERSION/src/go/utils"
-)
-
-type DownloadSession struct {
-	URL            string
-	SessionDir     string
-	Logger         *ui.Logger
-	Metadata       *utils.URLMetadata
-	FinalFilePath  string
-	DownloadTime   time.Duration
-	DownloadSpeed  float64
-	Workers        int
-	UseThreads     bool
-	CheckIntegrity bool
-	Checksum       string
-}
-
-var currentSession *DownloadSession
-
-func Start() {
-	reader := bufio.NewReader(os.Stdin)
-
-	url := promptURL(reader)
-	if url == "" {
-		ui.PrintError("Invalid URL")
-		return
-	}
-
-	ui.PrintInfo(fmt.Sprintf("Fetching metadata: %s", url))
-
-	metadata, err := utils.FetchURLMetadata(url)
-	if err != nil {
-		ui.PrintError(fmt.Sprintf("Failed to fetch metadata: %v", err))
-		return
-	}
-
-	ui.PrintFileInfo(metadata.Filename, metadata.Size)
-
-	useThreads := ui.PromptUseThreads(metadata.SupportsRange)
-	workers := 1
-
-	if useThreads && metadata.SupportsRange {
-		workers = download.CalculateWorkers(metadata.Size)
-	}
-
-	ui.PrintThreadingInfo(metadata.SupportsRange, workers)
-
-	checkIntegrity := ui.PromptIntegrityCheck()
-	var expectedChecksum string
-	if checkIntegrity {
-		fmt.Print(ui.ColorYellow + "Provide expected SHA256 checksum now? [y/n]: " + ui.ColorReset)
-		resp, _ := reader.ReadString('\n')
-		if strings.ToLower(strings.TrimSpace(resp)) == "y" {
-			fmt.Print(ui.ColorYellow + "Enter SHA256 checksum: " + ui.ColorReset)
-			cs, _ := reader.ReadString('\n')
-			expectedChecksum = strings.TrimSpace(cs)
-		}
-	}
-
-	fmt.Print(ui.ColorYellow + "Delete existing downloads in target to free space? [y/n]: " + ui.ColorReset)
-	delResp, _ := reader.ReadString('\n')
-	if strings.ToLower(strings.TrimSpace(delResp)) == "y" {
-		if err := utils.ClearTarget(); err != nil {
-			ui.PrintError(fmt.Sprintf("Failed to clear target: %v", err))
-			return
-		}
-		ui.PrintWarning("Cleared existing downloads in target/")
-	}
-
-	sessionDir, err := utils.CreateSessionDirectory()
-	if err != nil {
-		ui.PrintError(fmt.Sprintf("Failed to create session directory: %v", err))
-		return
-	}
-
-	logger, err := ui.NewLogger(sessionDir)
-	if err != nil {
-		ui.PrintError(fmt.Sprintf("Failed to create logger: %v", err))
-		return
-	}
-	defer logger.Close()
-
-	currentSession = &DownloadSession{
-		URL:            url,
-		SessionDir:     sessionDir,
-		Logger:         logger,
-		Metadata:       metadata,
-		Workers:        workers,
-		UseThreads:     useThreads,
-		CheckIntegrity: checkIntegrity,
-	}
-
-	logger.LogInfo(fmt.Sprintf("Starting download: %s", metadata.Filename))
-	logger.LogInfo(fmt.Sprintf("File size: %d bytes", metadata.Size))
-	logger.LogInfo(fmt.Sprintf("Threading enabled: %v", useThreads))
-	logger.LogInfo(fmt.Sprintf("Workers: %d", workers))
-
-	if err := performDownload(reader, logger, expectedChecksum); err != nil {
-		ui.PrintError(fmt.Sprintf("Download failed: %v", err))
-		logger.LogError(fmt.Sprintf("Download failed: %v", err))
-		return
-	}
-
-	// ingest Zig downloader log and update session
-	zlog := filepath.Join(currentSession.SessionDir, "downloader.log")
-	if data, err := os.ReadFile(zlog); err == nil {
-		logger.LogInfo("Zig downloader log:\n" + string(data))
-		// parse duration and avg speed
-		lines := strings.Split(string(data), "\n")
-		var durS float64
-		var avg float64
-		var checksum string
-		var match bool
-		for _, L := range lines {
-			if strings.HasPrefix(L, "DURATION_SECONDS:") {
-				fmt.Sscanf(L, "DURATION_SECONDS: %f", &durS)
+		for {
+			url, action := promptURL(reader)
+			if action == "exit" {
+				ui.PrintInfo("Exiting...")
+				return
 			}
-			if strings.HasPrefix(L, "AVERAGE_SPEED_MBPS:") {
-				fmt.Sscanf(L, "AVERAGE_SPEED_MBPS: %f", &avg)
+			if action == "reset" {
+				if err := utils.ClearTarget(); err != nil {
+					ui.PrintError(fmt.Sprintf("Failed to clear target: %v", err))
+				} else {
+					ui.PrintWarning("Cleared existing downloads in target/")
+				}
+				continue
 			}
-			if strings.HasPrefix(L, "CHECKSUM:") {
-				parts := strings.SplitN(L, ":", 2)
-				if len(parts) == 2 {
-					checksum = strings.TrimSpace(parts[1])
+
+			if url == "" {
+				ui.PrintError("Invalid URL")
+				continue
+			}
+
+			ui.PrintInfo(fmt.Sprintf("Fetching metadata: %s", url))
+
+			metadata, err := utils.FetchURLMetadata(url)
+			if err != nil {
+				ui.PrintError(fmt.Sprintf("Failed to fetch metadata: %v", err))
+				continue
+			}
+
+			ui.PrintFileInfo(metadata.Filename, metadata.Size)
+
+			useThreads := ui.PromptUseThreads(metadata.SupportsRange)
+			workers := 1
+
+			if useThreads && metadata.SupportsRange {
+				workers = download.CalculateWorkers(metadata.Size)
+			}
+
+			ui.PrintThreadingInfo(metadata.SupportsRange, workers)
+
+			checkIntegrity := ui.PromptIntegrityCheck()
+			var expectedChecksum string
+			if checkIntegrity {
+				fmt.Print(ui.ColorYellow + "Provide expected SHA256 checksum now? [y/n]: " + ui.ColorReset)
+				resp, _ := reader.ReadString('\n')
+				if strings.ToLower(strings.TrimSpace(resp)) == "y" {
+					fmt.Print(ui.ColorYellow + "Enter SHA256 checksum: " + ui.ColorReset)
+					cs, _ := reader.ReadString('\n')
+					expectedChecksum = strings.TrimSpace(cs)
+				}
+			}
+
+			fmt.Print(ui.ColorYellow + "Delete existing downloads in target to free space? [y/n]: " + ui.ColorReset)
+			delResp, _ := reader.ReadString('\n')
+			if strings.ToLower(strings.TrimSpace(delResp)) == "y" {
+				if err := utils.ClearTarget(); err != nil {
+					ui.PrintError(fmt.Sprintf("Failed to clear target: %v", err))
+					continue
+				}
+				ui.PrintWarning("Cleared existing downloads in target/")
+			}
+
+			sessionDir, err := utils.CreateSessionDirectory()
+			if err != nil {
+				ui.PrintError(fmt.Sprintf("Failed to create session directory: %v", err))
+				continue
+			}
+
+			logger, err := ui.NewLogger(sessionDir)
+			if err != nil {
+				ui.PrintError(fmt.Sprintf("Failed to create logger: %v", err))
+				continue
+			}
+
+			currentSession = &DownloadSession{
+				URL:            url,
+				SessionDir:     sessionDir,
+				Logger:         logger,
+				Metadata:       metadata,
+				Workers:        workers,
+				UseThreads:     useThreads,
+				CheckIntegrity: checkIntegrity,
+			}
+
+			logger.LogInfo(fmt.Sprintf("Starting download: %s", metadata.Filename))
+			logger.LogInfo(fmt.Sprintf("File size: %d bytes", metadata.Size))
+			logger.LogInfo(fmt.Sprintf("Threading enabled: %v", useThreads))
+			logger.LogInfo(fmt.Sprintf("Workers: %d", workers))
+
+			if err := performDownload(reader, logger, expectedChecksum); err != nil {
+				ui.PrintError(fmt.Sprintf("Download failed: %v", err))
+				logger.LogError(fmt.Sprintf("Download failed: %v", err))
+				logger.Close()
+				continue
+			}
+
+			// compute and display SHA256 for final file
+			finalPath := filepath.Join(currentSession.SessionDir, currentSession.Metadata.Filename)
+			computed, cerr := integrity.CalculateSHA256(finalPath)
+			if cerr != nil {
+				ui.PrintWarning("Failed to compute SHA256: " + cerr.Error())
+				logger.LogError("Failed to compute SHA256: " + cerr.Error())
+			} else {
+				ui.PrintInfo("Computed SHA256: " + computed)
+				logger.LogInfo("Computed SHA256: " + computed)
+			}
+
+			// ingest downloader.log if present and show final integrity result
+			zlog := filepath.Join(currentSession.SessionDir, "downloader.log")
+			if data, err := os.ReadFile(zlog); err == nil {
+				logger.LogInfo("Downloader log:\n" + string(data))
+				// parse duration and avg speed
+				lines := strings.Split(string(data), "\n")
+				var durS float64
+				var avg float64
+				var checksum string
+				var match bool
+				for _, L := range lines {
+					if strings.HasPrefix(L, "DURATION_SECONDS:") {
+						fmt.Sscanf(L, "DURATION_SECONDS: %f", &durS)
+					}
+					if strings.HasPrefix(L, "AVERAGE_SPEED_MBPS:") {
+						fmt.Sscanf(L, "AVERAGE_SPEED_MBPS: %f", &avg)
+					}
+					if strings.HasPrefix(L, "CHECKSUM:") {
+						parts := strings.SplitN(L, ":", 2)
+						if len(parts) == 2 {
+							checksum = strings.TrimSpace(parts[1])
+						}
+					}
+					if strings.HasPrefix(L, "CHECKSUM_MATCH:") {
+						parts := strings.SplitN(L, ":", 2)
+						if len(parts) == 2 {
+							match = strings.TrimSpace(parts[1]) == "true"
+						}
+					}
+				}
+				currentSession.DownloadTime = time.Duration(durS * float64(time.Second))
+				currentSession.DownloadSpeed = avg
+				currentSession.Checksum = checksum
+				// log summary via Go logger as well
+				logger.LogSummary(
+					currentSession.Metadata.Filename,
+					currentSession.Metadata.Size,
+					currentSession.DownloadTime,
+					currentSession.DownloadSpeed,
+					currentSession.Workers,
+					currentSession.Checksum,
+					match,
+				)
+
+				percent := ui.ComputeChecksumSimilarity(checksum, expectedChecksum)
+				ui.PrintIntegrityCheckEnhanced(checksum, expectedChecksum, match, percent)
+			} else {
+				// if no downloader.log, still show computed integrity
+				if computed != "" {
+					percent := ui.ComputeChecksumSimilarity(computed, expectedChecksum)
+					ui.PrintIntegrityCheckEnhanced(computed, expectedChecksum, strings.EqualFold(computed, expectedChecksum), percent)
+					logger.LogInfo(fmt.Sprintf("Integrity check: %v", strings.EqualFold(computed, expectedChecksum)))
+				}
+			}
+
+			ui.PrintSuccess("Download completed successfully")
+			logger.LogInfo("Download completed successfully")
+			logger.Close()
+			// loop back for next download
+		}
 				}
 			}
 			if strings.HasPrefix(L, "CHECKSUM_MATCH:") {
@@ -169,9 +207,17 @@ func Start() {
 }
 
 func promptURL(reader *bufio.Reader) string {
-	fmt.Print(ui.ColorGreen + "Enter download URL: " + ui.ColorReset)
+	fmt.Print(ui.ColorGreen + "Enter download URL (or type 'exit' to quit, 'reset' to clear target): " + ui.ColorReset)
 	url, _ := reader.ReadString('\n')
-	return strings.TrimSpace(url)
+	s := strings.TrimSpace(url)
+	lower := strings.ToLower(s)
+	if lower == "exit" {
+		return "__CMD_EXIT__"
+	}
+	if lower == "reset" {
+		return "__CMD_RESET__"
+	}
+	return s
 }
 
 func performDownload(reader *bufio.Reader, logger *ui.Logger, expectedChecksum string) error {
