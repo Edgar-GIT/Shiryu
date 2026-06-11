@@ -188,6 +188,45 @@ func PrintIntegrityCheck(computed string, expected string, matches bool) {
 	}
 }
 
+func ComputeChecksumSimilarity(a, b string) float64 {
+	a = strings.ToLower(strings.TrimSpace(a))
+	b = strings.ToLower(strings.TrimSpace(b))
+	if a == "" || b == "" {
+		return 0.0
+	}
+	maxLen := len(a)
+	if len(b) > maxLen {
+		maxLen = len(b)
+	}
+	minLen := len(a)
+	if len(b) < minLen {
+		minLen = len(b)
+	}
+	matched := 0
+	for i := 0; i < minLen; i++ {
+		if a[i] == b[i] {
+			matched++
+		}
+	}
+	return (float64(matched) / float64(maxLen)) * 100.0
+}
+
+func PrintIntegrityCheckEnhanced(computed string, expected string, matches bool, percent float64) {
+	if strings.TrimSpace(expected) == "" {
+		fmt.Printf("%sComputed SHA256:%s %s\n", ColorYellow, ColorReset, computed)
+		return
+	}
+
+	if matches {
+		fmt.Printf("%s✓ Checksum match - file integrity confirmed (%s%.2f%%%s)%s\n", ColorGreen, ColorYellow, percent, ColorGreen, ColorReset)
+		fmt.Printf("%sComputed:%s %s\n", ColorCyan, ColorReset, computed)
+	} else {
+		fmt.Printf("%s✗ Checksum mismatch (%s%.2f%%%s)%s\n", ColorRed, ColorYellow, percent, ColorRed, ColorReset)
+		fmt.Printf("%sComputed:%s %s\n", ColorCyan, ColorReset, computed)
+		fmt.Printf("%sExpected:%s %s\n", ColorMagenta, ColorReset, expected)
+	}
+}
+
 func PrintError(msg string) {
 	fmt.Printf("%s✗ Error: %s%s\n", ColorRed, msg, ColorReset)
 }

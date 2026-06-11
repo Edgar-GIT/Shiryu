@@ -159,6 +159,9 @@ func Start() {
 			currentSession.Checksum,
 			match,
 		)
+
+		percent := ui.ComputeChecksumSimilarity(checksum, expectedChecksum)
+		ui.PrintIntegrityCheckEnhanced(checksum, expectedChecksum, match, percent)
 	}
 
 	ui.PrintSuccess("Download completed successfully")
@@ -271,7 +274,8 @@ func performIntegrityCheck(reader *bufio.Reader, logger *ui.Logger) (bool, strin
 		ui.PrintInfo(fmt.Sprintf("Computed SHA256: %s", computed))
 		logger.LogInfo(fmt.Sprintf("Computed SHA256: %s", computed))
 	} else {
-		ui.PrintIntegrityCheck(computed, expectedChecksum, matches)
+		percent := ui.ComputeChecksumSimilarity(computed, expectedChecksum)
+		ui.PrintIntegrityCheckEnhanced(computed, expectedChecksum, matches, percent)
 		logger.LogInfo(fmt.Sprintf("Integrity check: %v", matches))
 
 		if !matches {
