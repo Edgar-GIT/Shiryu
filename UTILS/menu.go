@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 )
 
@@ -24,13 +25,10 @@ var colors = map[string]string{
 }
 
 func DetectOS() string{
-
-	var result string
-
-	return result
+	return runtime.GOOS
 }
 
-func ClearTerm(){
+func ClearTerm(os string){
 
 }
 
