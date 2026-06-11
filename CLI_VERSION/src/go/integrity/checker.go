@@ -1,28 +1,27 @@
 package integrity
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
 func CalculateSHA256(filePath string) (string, error) {
-	zigSrc := filepath.Join(".", "CLI_VERSION", "src", "zig", "hash.zig")
-
-	if _, err := os.Stat(zigSrc); err != nil {
-		return "", fmt.Errorf("hash.zig not found: %w", err)
-	}
-
-	cmd := exec.Command("zig", "run", zigSrc, "--", filePath)
-	output, err := cmd.Output()
+	f, err := os.Open(filePath)
 	if err != nil {
-		return "", fmt.Errorf("hash calculation failed: %w", err)
+		return "", fmt.Errorf("failed to open file: %w", err)
+	}
+	defer f.Close()
+
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, f); err != nil {
+		return "", fmt.Errorf("failed to read file: %w", err)
 	}
 
-	hash := strings.TrimSpace(string(output))
-	return hash, nil
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
 func VerifyChecksum(filePath string, expectedChecksum string) (bool, string, error) {
