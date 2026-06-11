@@ -24,6 +24,9 @@ var colors = map[string]string{
 	"FADE8":  "\033[38;5;43m",
 	"FADE9":  "\033[38;5;49m",
 	"FADE10": "\033[38;5;48m",
+	"PINK":   "\033[38;5;205m",
+	"WHITE":  "\033[38;5;255m",
+	"CYAN":   "\033[38;5;51m",
 }
 
 func DetectOS() string{
@@ -69,4 +72,12 @@ $$\   $$ |$$ |  $$ |$$ |$$ |      $$ |  $$ |$$ |  $$ |
 		color := fadeSequence[i%len(fadeSequence)]
 		fmt.Printf("%s%s%s\n", color, line, colors["RESET"])
 	}
+
+	box := fmt.Sprintf(`
+%s+-----------------------------------------------------------+
+| %sA web, ultra fast, download booster%s | %sversion: 1.0.0%s    |
+| %sGithub: Edgar-GIT%s                                         |
++-----------------------------------------------------------+%s
+`, colors["PINK"], colors["CYAN"], colors["PINK"], colors["WHITE"], colors["PINK"], colors["CYAN"], colors["PINK"], colors["RESET"])
+	fmt.Println(box)
 }
