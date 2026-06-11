@@ -69,8 +69,16 @@ func NewManager(url string, totalSize int64, workers int, sessionDir string) *Ma
 func (m *Manager) Start() error {
 	m.startTime = time.Now()
 	var wg sync.WaitGroup
+	tr := &http.Transport{
+		MaxIdleConns:        1000,
+		MaxIdleConnsPerHost: 1000,
+		IdleConnTimeout:     90 * time.Second,
+		DisableCompression:  false,
+		ForceAttemptHTTP2:   true,
+	}
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Transport: tr,
+		Timeout:   0,
 	}
 
 	for i := range m.parts {

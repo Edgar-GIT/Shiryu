@@ -246,8 +246,9 @@ fn compute_sha256(path: []const u8, allocator: *std.mem.Allocator) ![]u8 {
 
 fn base_name_from_url(url: []const u8, allocator: *std.mem.Allocator) ?[]const u8 {
     var idx: isize = -1;
-    for (url) |c, i| {
-        if (c == '/') idx = i;
+    var i: usize = 0;
+    while (i < url.len) : (i += 1) {
+        if (url[i] == '/') idx = @intCast(isize, i);
     }
     if (idx < 0) return null;
     const start = @intCast(usize, idx + 1);

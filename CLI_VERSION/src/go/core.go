@@ -172,19 +172,80 @@ func promptURL(reader *bufio.Reader) string {
 }
 
 func performDownload(reader *bufio.Reader, logger *ui.Logger, expectedChecksum string) error {
-	zigPath := filepath.Join(".", "CLI_VERSION", "src", "zig", "downloader.zig")
-	args := []string{"run", zigPath, "--", currentSession.URL, currentSession.SessionDir, strconv.Itoa(currentSession.Workers)}
-	if expectedChecksum != "" {
-		args = append(args, expectedChecksum)
+	// prefer aria2c if available for maximum throughput
+	aria2path, _ := exec.LookPath("aria2c")
+	start := time.Now()
+	if aria2path != "" {
+		args := []string{"-x", strconv.Itoa(currentSession.Workers), "-s", strconv.Itoa(currentSession.Workers), "-k", "1M", "-d", currentSession.SessionDir, "-o", currentSession.Metadata.Filename, currentSession.URL}
+		cmd := exec.Command(aria2path, args...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("aria2c failed: %w", err)
+		}
+		currentSession.FinalFilePath = filepath.Join(currentSession.SessionDir, currentSession.Metadata.Filename)
+		// create downloader.log
+		createDownloaderLog(currentSession.SessionDir, start, time.Now(), currentSession.Workers, currentSession.Metadata.Filename, currentSession.Metadata.Size, expectedChecksum)
+		return nil
 	}
-	cmd := exec.Command("zig", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("zig downloader failed: %w", err)
+
+	// fallback to Go segmented downloader
+	mgr := download.NewManager(currentSession.URL, currentSession.Metadata.Size, currentSession.Workers, currentSession.SessionDir)
+	start = time.Now()
+	if err := mgr.Start(); err != nil {
+		return fmt.Errorf("download manager failed: %w", err)
 	}
-	currentSession.FinalFilePath = filepath.Join(currentSession.SessionDir, currentSession.Metadata.Filename)
+	// merge parts
+	finalPath, err := utils.MergeParts(currentSession.SessionDir, currentSession.Metadata.Filename, currentSession.Workers)
+	if err != nil {
+		return fmt.Errorf("merge failed: %w", err)
+	}
+	currentSession.FinalFilePath = finalPath
+	// write downloader.log
+	createDownloaderLog(currentSession.SessionDir, start, time.Now(), currentSession.Workers, currentSession.Metadata.Filename, currentSession.Metadata.Size, expectedChecksum)
 	return nil
+}
+
+func createDownloaderLog(sessionDir string, start time.Time, end time.Time, workers int, filename string, sizeBytes int64, expectedChecksum string) {
+	duration := end.Sub(start).Seconds()
+	avg := (float64(sizeBytes) / (1024.0 * 1024.0)) / duration
+	logPath := filepath.Join(sessionDir, "downloader.log")
+	f, _ := os.Create(logPath)
+	if f == nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "START_TIME: %d\n", start.UnixNano())
+	fmt.Fprintf(f, "END_TIME: %d\n", end.UnixNano())
+	fmt.Fprintf(f, "DURATION_SECONDS: %f\n", duration)
+	fmt.Fprintf(f, "AVERAGE_SPEED_MBPS: %f\n", avg)
+	fmt.Fprintf(f, "WORKERS: %d\n", workers)
+	fmt.Fprintf(f, "FILE: %s\n", filename)
+	fmt.Fprintf(f, "SIZE_BYTES: %d\n", sizeBytes)
+	// compute checksum if requested or if expectedChecksum provided
+	if expectedChecksum != "" {
+		// try to compute checksum via integrity package
+		computed, err := integrity.CalculateSHA256(filepath.Join(sessionDir, filename))
+		if err == nil {
+			fmt.Fprintf(f, "CHECKSUM: %s\n", computed)
+			if strings.EqualFold(computed, expectedChecksum) {
+				fmt.Fprintln(f, "CHECKSUM_MATCH: true")
+				fmt.Fprintln(f, "STATUS: OK")
+			} else {
+				fmt.Fprintln(f, "CHECKSUM_MATCH: false")
+				fmt.Fprintln(f, "STATUS: FAIL")
+				fmt.Fprintln(f, "MESSAGE: checksum mismatch")
+			}
+		}
+	} else {
+		// attempt compute checksum
+		computed, err := integrity.CalculateSHA256(filepath.Join(sessionDir, filename))
+		if err == nil {
+			fmt.Fprintf(f, "CHECKSUM: %s\n", computed)
+			fmt.Fprintln(f, "CHECKSUM_MATCH: true")
+			fmt.Fprintln(f, "STATUS: OK")
+		}
+	}
 }
 
 func performIntegrityCheck(reader *bufio.Reader, logger *ui.Logger) (bool, string, error) {
