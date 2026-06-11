@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	core "shiryu/CLI_VERSION/src/go"
 	utils "shiryu/UTILS"
 )
