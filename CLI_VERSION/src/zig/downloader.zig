@@ -20,11 +20,9 @@ pub fn main() !void {
 
     const start_time = std.time.timestamp();
 
-    // initialize libcurl via wrapper
     _ = c.curl_global_init_wrapper();
     defer c.curl_global_cleanup_wrapper();
 
-    // quick header fetch using system curl (keeps compatibility)
     var header_path_buf = try std.fmt.allocPrint(allocator, "{s}/_headers", .{session_dir});
     defer allocator.free(header_path_buf);
 
@@ -105,7 +103,6 @@ pub fn main() !void {
         _ = threads[i].wait();
     }
 
-    // validate parts
     var all_ok = true;
     for (actual_workers) |i| {
         const p = parts[i];

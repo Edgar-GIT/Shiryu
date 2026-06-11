@@ -122,7 +122,6 @@ func Start() {
 			continue
 		}
 
-		// compute and display SHA256 for final file
 		finalPath := filepath.Join(currentSession.SessionDir, currentSession.Metadata.Filename)
 		computed, cerr := integrity.CalculateSHA256(finalPath)
 		if cerr != nil {
@@ -133,7 +132,6 @@ func Start() {
 			logger.LogInfo("Computed SHA256: " + computed)
 		}
 
-		// ingest downloader.log if present and show final integrity result
 		zlog := filepath.Join(currentSession.SessionDir, "downloader.log")
 		if data, err := os.ReadFile(zlog); err == nil {
 			logger.LogInfo("Downloader log:\n" + string(data))
@@ -188,7 +186,6 @@ func Start() {
 		ui.PrintSuccess("Download completed successfully")
 		logger.LogInfo("Download completed successfully")
 		logger.Close()
-		// loop back for next download
 	}
 }
 
