@@ -2,7 +2,7 @@ package main
 
 import (
 	utils "shiryu/UTILS"
-	core  ""
+	core  "shiryu/CLI_VERSION/src/go"
 )
 
 func main(){
