@@ -206,7 +206,7 @@ func promptURL(reader *bufio.Reader) (string, string) {
 	return s, ""
 }
 
-func performDownload(reader *bufio.Reader, logger *ui.Logger, expectedChecksum string) error {
+func performDownload(_ *bufio.Reader, _ *ui.Logger, expectedChecksum string) error {
 	aria2path, _ := exec.LookPath("aria2c")
 	start := time.Now()
 	if aria2path != "" {

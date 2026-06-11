@@ -61,7 +61,7 @@ func (l *Logger) LogSummary(filename string, sizeBytes int64, duration time.Dura
 		if checksumMatch {
 			l.Log(fmt.Sprintf("Integrity: PASS (Checksum: %s)", checksum))
 		} else {
-			l.Log(fmt.Sprintf("Integrity: FAIL (Checksum mismatch)"))
+			l.Log("Integrity: FAIL (Checksum mismatch)")
 		}
 	}
 	l.Log("=== END SUMMARY ===")
