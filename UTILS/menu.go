@@ -2,6 +2,7 @@ package menu
 
 import (
 	"fmt"
+	"strings"
 )
 
 var colors = map[string]string{
@@ -10,6 +11,16 @@ var colors = map[string]string{
 	"GREEN":  "\033[32m",
 	"BLUE":   "\033[34m",
 	"GRAY":   "\033[37m",
+	"FADE1":  "\033[38;5;26m",
+	"FADE2":  "\033[38;5;27m",
+	"FADE3":  "\033[38;5;32m",
+	"FADE4":  "\033[38;5;33m",
+	"FADE5":  "\033[38;5;39m",
+	"FADE6":  "\033[38;5;38m",
+	"FADE7":  "\033[38;5;44m",
+	"FADE8":  "\033[38;5;43m",
+	"FADE9":  "\033[38;5;49m",
+	"FADE10": "\033[38;5;48m",
 }
 
 func ClearTerm(){
@@ -28,7 +39,17 @@ $$\   $$ |$$ |  $$ |$$ |$$ |      $$ |  $$ |$$ |  $$ |
  \______/ \__|  \__|\__|\__|       \____$$ | \______/ 
                                   $$\   $$ |          
                                   \$$$$$$  |          
-                                   \______/           
-`
-	fmt.Println(banner)
+                                   \______/           `
+
+	fadeSequence := []string{
+		colors["FADE1"], colors["FADE2"], colors["FADE3"], colors["FADE4"], colors["FADE5"],
+		colors["FADE6"], colors["FADE7"], colors["FADE8"], colors["FADE9"], colors["FADE10"],
+		colors["FADE9"], colors["FADE8"], colors["FADE7"],
+	}
+
+	lines := strings.Split(banner, "\n")
+	for i, line := range lines {
+		color := fadeSequence[i%len(fadeSequence)]
+		fmt.Printf("%s%s%s\n", color, line, colors["RESET"])
+	}
 }
