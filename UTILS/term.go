@@ -75,8 +75,8 @@ $$\   $$ |$$ |  $$ |$$ |$$ |      $$ |  $$ |$$ |  $$ |
 
 	box := fmt.Sprintf(`
 %s+-----------------------------------------------------------+
-| %sA web, ultra fast, download booster%s | %sversion: 1.0.0%s    |
-| %sGithub: Edgar-GIT%s                                         |
+| %sA web, ultra fast, download booster%s | %sversion: 1.0.0%s      |
+|                    %sGithub: Edgar-GIT%s                      |
 +-----------------------------------------------------------+%s
 `, colors["PINK"], colors["CYAN"], colors["PINK"], colors["WHITE"], colors["PINK"], colors["CYAN"], colors["PINK"], colors["RESET"])
 	fmt.Println(box)
