@@ -29,7 +29,15 @@ func DetectOS() string{
 }
 
 func ClearTerm(os string){
+	switch(os){
 
+		case "linux":
+	
+		case "windows":
+	
+		case "mac":
+	
+	}
 }
 
 func PrintBanner(){
