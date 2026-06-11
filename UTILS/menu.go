@@ -2,15 +2,20 @@ package menu
 
 import (
 	"fmt"
-	"String"
 )
 
+const colors:=(
+	"RED":
+	"BLUE":
+	"GREEN":
+	"GRAY":
+)
 
-func clearTerm(){
+func ClearTerm(){
 
 }
 
-func printBanner(){
+func PrintBanner(){
 	banner:= `
  $$$$$$\  $$\       $$\                               
 $$  __$$\ $$ |      \__|                              
