@@ -1,4 +1,4 @@
-package menu
+package utils
 
 import (
 	"fmt"
@@ -21,6 +21,13 @@ var colors = map[string]string{
 	"FADE8":  "\033[38;5;43m",
 	"FADE9":  "\033[38;5;49m",
 	"FADE10": "\033[38;5;48m",
+}
+
+func DetectOS() string{
+
+	var result string
+
+	return result
 }
 
 func ClearTerm(){
