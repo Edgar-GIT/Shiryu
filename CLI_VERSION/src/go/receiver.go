@@ -13,9 +13,9 @@ func Start() {
 	url, _ := reader.ReadString('\n')
 	url = strings.TrimSpace(url)
 
-	if url != "" {
-		fmt.Printf("\033[34mTarget: %s\033[0m\n", url)
-	}
+	if url != "" {fmt.Printf("\033[34mFetching -> %s\033[0m\n", url)}
+
+
 }
 
 
