@@ -9,7 +9,7 @@ pub fn main() !void {
     defer std.process.argsFree(allocator, args);
 
     if (args.len < 2) {
-        std.debug.print("usage: hash <file>\n", .{});
+        std.debug.print("usage: fileinfo <file>\n", .{});
         return;
     }
 
@@ -17,16 +17,8 @@ pub fn main() !void {
     const file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
 
-    const data = try file.readToEndAlloc(allocator, 1 * 1024 * 1024 * 1024);
-    defer allocator.free(data);
+    const stat = try file.stat();
+    const size = stat.size;
 
-    var hasher = std.crypto.hash.sha2.Sha256.init(.{});
-    hasher.update(data);
-    var digest: [32]u8 = undefined;
-    hasher.final(&digest);
-
-    for (digest) |byte| {
-        std.debug.print("{x:0>2}", .{byte});
-    }
-    std.debug.print("\n", .{});
+    std.debug.print("size:{}\n", .{size});
 }
