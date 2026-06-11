@@ -4,12 +4,13 @@ import (
 	"fmt"
 )
 
-const colors:=(
-	"RED":
-	"BLUE":
-	"GREEN":
-	"GRAY":
-)
+var colors = map[string]string{
+	"RESET":  "\033[0m",
+	"RED":    "\033[31m",
+	"GREEN":  "\033[32m",
+	"BLUE":   "\033[34m",
+	"GRAY":   "\033[37m",
+}
 
 func ClearTerm(){
 
