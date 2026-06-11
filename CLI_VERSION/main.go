@@ -9,6 +9,5 @@ import (
 func main(){
 	utils.ClearTerm(utils.DetectOS())
 	utils.PrintBanner()
-	fmt.Sprintf("Download URL: ", utils.color.GREEN)
 	core.Start()
 }
