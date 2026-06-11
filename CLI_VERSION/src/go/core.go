@@ -4,6 +4,9 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -58,6 +61,16 @@ func Start() {
 	ui.PrintThreadingInfo(metadata.SupportsRange, workers)
 
 	checkIntegrity := ui.PromptIntegrityCheck()
+	var expectedChecksum string
+	if checkIntegrity {
+		fmt.Print(ui.ColorYellow + "Provide expected SHA256 checksum now? [y/n]: " + ui.ColorReset)
+		resp, _ := reader.ReadString('\n')
+		if strings.ToLower(strings.TrimSpace(resp)) == "y" {
+			fmt.Print(ui.ColorYellow + "Enter SHA256 checksum: " + ui.ColorReset)
+			cs, _ := reader.ReadString('\n')
+			expectedChecksum = strings.TrimSpace(cs)
+		}
+	}
 
 	fmt.Print(ui.ColorYellow + "Delete existing downloads in target to free space? [y/n]: " + ui.ColorReset)
 	delResp, _ := reader.ReadString('\n')
@@ -97,33 +110,56 @@ func Start() {
 	logger.LogInfo(fmt.Sprintf("Threading enabled: %v", useThreads))
 	logger.LogInfo(fmt.Sprintf("Workers: %d", workers))
 
-	if err := performDownload(reader, logger); err != nil {
+	if err := performDownload(reader, logger, expectedChecksum); err != nil {
 		ui.PrintError(fmt.Sprintf("Download failed: %v", err))
 		logger.LogError(fmt.Sprintf("Download failed: %v", err))
 		return
 	}
 
-	var checksumComputed string
-	var checksumMatch bool
-	if checkIntegrity {
-		matches, computed, err := performIntegrityCheck(reader, logger)
-		if err != nil {
-			ui.PrintError(fmt.Sprintf("Integrity check failed: %v", err))
-			logger.LogError(fmt.Sprintf("Integrity check failed: %v", err))
+	// ingest Zig downloader log and update session
+	zlog := filepath.Join(currentSession.SessionDir, "downloader.log")
+	if data, err := os.ReadFile(zlog); err == nil {
+		logger.LogInfo("Zig downloader log:\n" + string(data))
+		// parse duration and avg speed
+		lines := strings.Split(string(data), "\n")
+		var durS float64
+		var avg float64
+		var checksum string
+		var match bool
+		for _, L := range lines {
+			if strings.HasPrefix(L, "DURATION_SECONDS:") {
+				fmt.Sscanf(L, "DURATION_SECONDS: %f", &durS)
+			}
+			if strings.HasPrefix(L, "AVERAGE_SPEED_MBPS:") {
+				fmt.Sscanf(L, "AVERAGE_SPEED_MBPS: %f", &avg)
+			}
+			if strings.HasPrefix(L, "CHECKSUM:") {
+				parts := strings.SplitN(L, ":", 2)
+				if len(parts) == 2 {
+					checksum = strings.TrimSpace(parts[1])
+				}
+			}
+			if strings.HasPrefix(L, "CHECKSUM_MATCH:") {
+				parts := strings.SplitN(L, ":", 2)
+				if len(parts) == 2 {
+					match = strings.TrimSpace(parts[1]) == "true"
+				}
+			}
 		}
-		checksumComputed = computed
-		checksumMatch = matches
+		currentSession.DownloadTime = time.Duration(durS * float64(time.Second))
+		currentSession.DownloadSpeed = avg
+		currentSession.Checksum = checksum
+		// log summary via Go logger as well
+		logger.LogSummary(
+			currentSession.Metadata.Filename,
+			currentSession.Metadata.Size,
+			currentSession.DownloadTime,
+			currentSession.DownloadSpeed,
+			currentSession.Workers,
+			currentSession.Checksum,
+			match,
+		)
 	}
-
-	logger.LogSummary(
-		currentSession.Metadata.Filename,
-		currentSession.Metadata.Size,
-		currentSession.DownloadTime,
-		currentSession.DownloadSpeed,
-		currentSession.Workers,
-		checksumComputed,
-		checksumMatch,
-	)
 
 	ui.PrintSuccess("Download completed successfully")
 	logger.LogInfo("Download completed successfully")
@@ -135,75 +171,20 @@ func promptURL(reader *bufio.Reader) string {
 	return strings.TrimSpace(url)
 }
 
-func performDownload(reader *bufio.Reader, logger *ui.Logger) error {
-	mgr := download.NewManager(
-		currentSession.URL,
-		currentSession.Metadata.Size,
-		currentSession.Workers,
-		currentSession.SessionDir,
-	)
-
-	downloadStartTime := time.Now()
-	done := make(chan struct{})
-
-	go func() {
-		if err := mgr.Start(); err != nil {
-			logger.LogError(fmt.Sprintf("Download failed: %v", err))
-		}
-		close(done)
-	}()
-
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-done:
-			downloadDuration := time.Since(downloadStartTime)
-			fmt.Printf("\r%s[================================] 100.00%% | Download Complete%s\n", ui.ColorGreen, ui.ColorReset)
-			logger.LogInfo("Download completed")
-
-			mergeStartTime := time.Now()
-			finalPath, err := utils.MergeParts(
-				currentSession.SessionDir,
-				currentSession.Metadata.Filename,
-				currentSession.Workers,
-			)
-			if err != nil {
-				logger.LogError(fmt.Sprintf("Merge failed: %v", err))
-				return err
-			}
-			mergeTime := time.Since(mergeStartTime)
-
-			currentSession.FinalFilePath = finalPath
-			currentSession.DownloadTime = downloadDuration
-			currentSession.DownloadSpeed = mgr.GetSpeed()
-
-			ui.PrintDownloadSummary(
-				currentSession.Metadata.Filename,
-				currentSession.Metadata.Size,
-				downloadDuration,
-				currentSession.DownloadSpeed,
-				currentSession.Workers,
-			)
-
-			logger.LogInfo(fmt.Sprintf("Merge time: %v", mergeTime))
-			return nil
-
-		case <-ticker.C:
-			progress := mgr.GetProgress()
-			speed := mgr.GetSpeed()
-			eta := mgr.GetETA()
-
-			ui.UpdateProgress(
-				progress,
-				currentSession.Metadata.Size,
-				currentSession.Workers,
-				speed,
-				eta,
-			)
-		}
+func performDownload(reader *bufio.Reader, logger *ui.Logger, expectedChecksum string) error {
+	zigPath := filepath.Join(".", "CLI_VERSION", "src", "zig", "downloader.zig")
+	args := []string{"run", zigPath, "--", currentSession.URL, currentSession.SessionDir, strconv.Itoa(currentSession.Workers)}
+	if expectedChecksum != "" {
+		args = append(args, expectedChecksum)
 	}
+	cmd := exec.Command("zig", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("zig downloader failed: %w", err)
+	}
+	currentSession.FinalFilePath = filepath.Join(currentSession.SessionDir, currentSession.Metadata.Filename)
+	return nil
 }
 
 func performIntegrityCheck(reader *bufio.Reader, logger *ui.Logger) (bool, string, error) {
