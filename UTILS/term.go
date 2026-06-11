@@ -2,6 +2,8 @@ package utils
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 )
@@ -28,16 +30,18 @@ func DetectOS() string{
 	return runtime.GOOS
 }
 
-func ClearTerm(os string){
-	switch(os){
-
-		case "linux":
-	
-		case "windows":
-	
-		case "mac":
-	
+func ClearTerm(osName string){
+	var cmd *exec.Cmd
+	switch osName {
+	case "linux", "darwin":
+		cmd = exec.Command("clear")
+	case "windows":
+		cmd = exec.Command("cls")
+	default:
+		return
 	}
+	cmd.Stdout = os.Stdout
+	cmd.Run()
 }
 
 func PrintBanner(){
