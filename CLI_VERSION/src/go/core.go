@@ -59,6 +59,16 @@ func Start() {
 
 	checkIntegrity := ui.PromptIntegrityCheck()
 
+	fmt.Print(ui.ColorYellow + "Delete existing downloads in target to free space? [y/n]: " + ui.ColorReset)
+	delResp, _ := reader.ReadString('\n')
+	if strings.ToLower(strings.TrimSpace(delResp)) == "y" {
+		if err := utils.ClearTarget(); err != nil {
+			ui.PrintError(fmt.Sprintf("Failed to clear target: %v", err))
+			return
+		}
+		ui.PrintWarning("Cleared existing downloads in target/")
+	}
+
 	sessionDir, err := utils.CreateSessionDirectory()
 	if err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to create session directory: %v", err))
@@ -93,12 +103,27 @@ func Start() {
 		return
 	}
 
+	var checksumComputed string
+	var checksumMatch bool
 	if checkIntegrity {
-		if err := performIntegrityCheck(reader, logger); err != nil {
+		matches, computed, err := performIntegrityCheck(reader, logger)
+		if err != nil {
 			ui.PrintError(fmt.Sprintf("Integrity check failed: %v", err))
 			logger.LogError(fmt.Sprintf("Integrity check failed: %v", err))
 		}
+		checksumComputed = computed
+		checksumMatch = matches
 	}
+
+	logger.LogSummary(
+		currentSession.Metadata.Filename,
+		currentSession.Metadata.Size,
+		currentSession.DownloadTime,
+		currentSession.DownloadSpeed,
+		currentSession.Workers,
+		checksumComputed,
+		checksumMatch,
+	)
 
 	ui.PrintSuccess("Download completed successfully")
 	logger.LogInfo("Download completed successfully")
@@ -181,7 +206,7 @@ func performDownload(reader *bufio.Reader, logger *ui.Logger) error {
 	}
 }
 
-func performIntegrityCheck(reader *bufio.Reader, logger *ui.Logger) error {
+func performIntegrityCheck(reader *bufio.Reader, logger *ui.Logger) (bool, string, error) {
 	fmt.Print(ui.ColorYellow + "Do you want to provide a checksum to verify? [y/n]: " + ui.ColorReset)
 	response, _ := reader.ReadString('\n')
 
@@ -197,7 +222,7 @@ func performIntegrityCheck(reader *bufio.Reader, logger *ui.Logger) error {
 
 	matches, computed, err := integrity.VerifyChecksum(currentSession.FinalFilePath, expectedChecksum)
 	if err != nil {
-		return err
+		return false, "", err
 	}
 
 	if expectedChecksum == "" {
@@ -213,15 +238,16 @@ func performIntegrityCheck(reader *bufio.Reader, logger *ui.Logger) error {
 			if strings.ToLower(strings.TrimSpace(response)) == "y" {
 				if err := os.Remove(currentSession.FinalFilePath); err != nil {
 					logger.LogError(fmt.Sprintf("Failed to delete file: %v", err))
-					return err
+					return false, computed, err
 				}
 				ui.PrintWarning("File deleted. Please retry download.")
 				logger.LogInfo("File deleted by user request")
-				return fmt.Errorf("file deleted due to checksum mismatch")
+				return false, computed, fmt.Errorf("file deleted due to checksum mismatch")
 			}
 		}
 	}
 
 	logger.LogInfo(fmt.Sprintf("Integrity check completed, matches: %v", matches))
-	return nil
+	currentSession.Checksum = computed
+	return matches, computed, nil
 }

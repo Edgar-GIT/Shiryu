@@ -17,16 +17,21 @@ pub fn main() !void {
     const file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
 
-    const data = try file.readToEndAlloc(allocator, 1 * 1024 * 1024 * 1024);
-    defer allocator.free(data);
-
     var hasher = std.crypto.hash.sha2.Sha256.init(.{});
-    hasher.update(data);
+    var buf: [64 * 1024]u8 = undefined;
+    while (true) {
+        const n = try file.read(buf[0..]);
+        if (n == 0) break;
+        hasher.update(buf[0..n]);
+    }
+
     var digest: [32]u8 = undefined;
     hasher.final(&digest);
 
-    for (digest) |byte| {
-        std.debug.print("{x:0>2}", .{byte});
+    const stdout = std.io.getStdOut().writer();
+    for (digest) |b| {
+        const hex = std.fmt.formatIntHex(b, .lower);
+        try stdout.writeAll(hex);
     }
-    std.debug.print("\n", .{});
+    try stdout.writeAll("\n");
 }

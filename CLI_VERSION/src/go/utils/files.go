@@ -76,3 +76,21 @@ func CheckChecksum(filePath string) (string, error) {
 	}
 	return filePath, nil
 }
+
+func ClearTarget() error {
+	targetRoot := filepath.Join(".", "target")
+	entries, err := os.ReadDir(targetRoot)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to read target directory: %w", err)
+	}
+	for _, e := range entries {
+		p := filepath.Join(targetRoot, e.Name())
+		if err := os.RemoveAll(p); err != nil {
+			return fmt.Errorf("failed to remove %s: %w", p, err)
+		}
+	}
+	return nil
+}
