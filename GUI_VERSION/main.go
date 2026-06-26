@@ -1,7 +1,6 @@
 package main
 
 import (
-	"embed"
 	"fmt"
 	"io/fs"
 	"log"
@@ -11,17 +10,15 @@ import (
 	"runtime"
 
 	"shiryu/GUI_VERSION/server"
+	"shiryu/pkg/ui"
 )
 
-//go:embed web/*
-var webFS embed.FS
-
 func main() {
-	sub, err := fs.Sub(webFS, "web")
+	staticFS, err := fs.Sub(ui.FS, "static")
 	if err != nil {
 		log.Fatal(err)
 	}
-	srv := server.New(sub)
+	srv := server.New(staticFS)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		log.Fatal(err)

@@ -2,7 +2,7 @@
 
 **A lightweight, ultra-fast web download speed booster.**
 
-Shiryu accelerates file downloads from the web using multi-threaded HTTP range requests, real-time progress tracking, integrity verification, and corruption recovery. It ships in two flavors: a full-featured **CLI** for the terminal and a modern **GUI** that runs locally in your browser.
+Shiryu accelerates file downloads from the web using multi-threaded HTTP range requests, real-time progress tracking, integrity verification, and corruption recovery. It ships in three flavors: a **CLI** for the terminal, a **GUI** that runs in your browser, and a native **desktop app**.
 
 Repository: [https://github.com/Edgar-GIT/Shiryu](https://github.com/Edgar-GIT/Shiryu)
 
@@ -37,7 +37,8 @@ Shiryu is a download booster designed to fetch large files from the internet as 
 - **Integrity & trust scoring** — SHA-256 checksum verification with integrity and confidence percentages
 - **Session logging** — per-download logs saved under `target/`
 - **Cross-platform** — Windows, macOS, and Linux
-- **Zero external Go dependencies** — pure Go standard library for the core application
+- **Three interfaces** — CLI, browser GUI, and native desktop app
+- **Minimal dependencies** — core engine uses Go standard library only
 
 ---
 
@@ -50,6 +51,8 @@ Shiryu is a download booster designed to fetch large files from the internet as 
 | Integrity | Go `crypto/sha256` |
 | CLI UI | Terminal ANSI colors, interactive stdin input |
 | GUI | Embedded HTTP server + HTML/CSS/JavaScript (SSE for live updates) |
+| Desktop App | Native window via WebView (`APP_VERSION/`) |
+| Shared UI | `pkg/ui/` — rainbow glass banner, charts, animal progress track |
 | Low-level tools | **Zig** + **C** (optional standalone utilities under `CLI_VERSION/src/zig/`) |
 | Shared utilities | `UTILS/` — formatting, terminal helpers, input routing |
 
@@ -69,8 +72,11 @@ Shiryu/
 │       └── utils/              # Network & file helpers
 ├── GUI_VERSION/          # Browser-based application
 │   ├── main.go
-│   ├── server/               # REST API + SSE backend
-│   └── web/                  # Frontend (HTML, CSS, JS)
+│   └── server/               # REST API + SSE backend
+├── APP_VERSION/          # Native desktop application
+│   └── main.go               # WebView window (no browser)
+├── pkg/ui/               # Shared web frontend (GUI + App)
+│   └── static/               # HTML, CSS, JS
 ├── UTILS/                # Shared helpers (CLI + common)
 ├── target/               # Download output (created at runtime)
 ├── main.png              # GUI screenshot
@@ -187,6 +193,25 @@ go build -o shiryu_gui ./GUI_VERSION/
 | Windows  | `shiryu_gui.exe` |
 | macOS / Linux | `shiryu_gui` |
 
+#### Desktop App
+
+Requires **WebView** runtime and build tools:
+
+| Platform | Requirements |
+|----------|--------------|
+| Windows | [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (pre-installed on Windows 11) |
+| macOS | WKWebView (built-in) |
+| Linux | `webkit2gtk` — e.g. `sudo apt install libwebkit2gtk-4.1-dev` (Debian/Ubuntu) or `sudo pacman -S webkit2gtk` (Arch) |
+
+```bash
+go build -o shiryu_app ./APP_VERSION/
+```
+
+| Platform | Output binary |
+|----------|---------------|
+| Windows  | `shiryu_app.exe` |
+| macOS / Linux | `shiryu_app` |
+
 ---
 
 ### Step 4 — Run
@@ -230,6 +255,28 @@ go run ./CLI_VERSION/
 ```bash
 go run ./GUI_VERSION/
 ```
+
+#### Desktop App (native window)
+
+**Windows**
+
+```bash
+.\shiryu_app.exe
+```
+
+**macOS / Linux**
+
+```bash
+./shiryu_app
+```
+
+**Without building**
+
+```bash
+go run ./APP_VERSION/
+```
+
+Opens a native desktop window — no browser tab needed.
 
 The GUI starts a local server and opens your default browser automatically. The URL is printed in the terminal (e.g. `http://127.0.0.1:54321`).
 

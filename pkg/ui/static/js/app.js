@@ -41,9 +41,7 @@ function showPage(name) {
   if (name === 'download') connectSSE();
 }
 
-$$('.nav-btn').forEach(btn => {
-  btn.addEventListener('click', () => showPage(btn.dataset.page));
-});
+$$('.nav-btn').forEach(btn => btn.addEventListener('click', () => showPage(btn.dataset.page)));
 
 const urlInput = $('#url-input');
 const startBtn = $('#start-btn');
@@ -131,10 +129,10 @@ function connectSSE() {
   evtSource = new EventSource('/api/download/events');
   evtSource.onmessage = (e) => {
     const data = JSON.parse(e.data);
-    if ($('#page-download').classList.contains('active')) {
-      updateDownloadUI(data);
-    }
-    updateGaugeSpeed(data.speed || 0);
+    if ($('#page-download').classList.contains('active')) updateDownloadUI(data);
+    Charts.drawSpeedometer($('#speed-gauge'), data.speed || 0);
+    const el = $('#gauge-speed');
+    if (el) el.textContent = formatSpeed(data.speed || 0);
   };
 }
 
@@ -144,9 +142,22 @@ function updateDownloadUI(d) {
   status.className = 'status-badge ' + (d.paused ? 'paused' : d.state);
 
   $('#dl-filename').textContent = d.filename || '—';
-  $('#dl-bar').style.width = (d.percent || 0) + '%';
-  $('#dl-percent').textContent = (d.percent || 0).toFixed(1) + '%';
+  const pct = d.percent || 0;
+  $('#dl-percent').textContent = pct.toFixed(1) + '%';
   $('#dl-size').textContent = `${formatBytes(d.progress || 0)} / ${formatBytes(d.total || 0)}`;
+
+  const track = $('#animal-track');
+  const runner = $('#runner');
+  const trackFill = $('#track-fill');
+  if (track && runner && trackFill) {
+    const pos = Math.min(Math.max(pct, 2), 98);
+    runner.style.left = pos + '%';
+    trackFill.style.width = pos + '%';
+    const active = ['downloading', 'merging'].includes(d.state) && !d.paused;
+    track.classList.toggle('running', active);
+    track.classList.toggle('paused', d.paused);
+  }
+
   $('#dl-speed').textContent = formatSpeed(d.speed || 0);
   $('#dl-elapsed').textContent = formatDuration(d.elapsed || 0);
   $('#dl-eta').textContent = d.eta > 0 ? formatDuration(d.eta) : '--:--';
@@ -160,15 +171,14 @@ function updateDownloadUI(d) {
   $('#corruption-panel').classList.toggle('hidden', !corrupt);
   $('#complete-panel').classList.toggle('hidden', !complete);
 
-  if (corrupt) {
-    $('#corr-pct').textContent = (d.corruptionPercent || 0).toFixed(1);
-  }
+  if (corrupt) $('#corr-pct').textContent = (d.corruptionPercent || 0).toFixed(1);
   if (complete) {
     $('#meter-integrity').style.width = (d.integrity || 0) + '%';
     $('#meter-trust').style.width = (d.trust || 0) + '%';
     $('#val-integrity').textContent = (d.integrity || 0).toFixed(1) + '%';
     $('#val-trust').textContent = (d.trust || 0).toFixed(1) + '%';
     $('#dl-output').textContent = d.outputPath || '';
+    if (track) track.classList.remove('running');
   }
 }
 
@@ -196,47 +206,6 @@ $$('.ctrl-btn[data-recover]').forEach(btn => {
 
 $('#back-home').addEventListener('click', () => showPage('home'));
 
-function drawGauge(speed) {
-  const canvas = $('#speed-gauge');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width, h = canvas.height;
-  const cx = w / 2, cy = h / 2 + 10;
-  const r = 80;
-  ctx.clearRect(0, 0, w, h);
-
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, Math.PI, 2 * Math.PI);
-  ctx.strokeStyle = '#243352';
-  ctx.lineWidth = 14;
-  ctx.stroke();
-
-  const max = 100;
-  const pct = Math.min(speed / max, 1);
-  const grad = ctx.createLinearGradient(cx - r, cy, cx + r, cy);
-  grad.addColorStop(0, '#3b82f6');
-  grad.addColorStop(1, '#06b6d4');
-
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, Math.PI, Math.PI + Math.PI * pct);
-  ctx.strokeStyle = grad;
-  ctx.lineWidth = 14;
-  ctx.lineCap = 'round';
-  ctx.stroke();
-
-  ctx.fillStyle = '#8ba3c7';
-  ctx.font = '13px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('0', cx - r + 10, cy + 20);
-  ctx.fillText('100', cx + r - 14, cy + 20);
-}
-
-function updateGaugeSpeed(speed) {
-  drawGauge(speed);
-  const el = $('#gauge-speed');
-  if (el) el.textContent = formatSpeed(speed);
-}
-
 async function loadStats() {
   try {
     const res = await fetch('/api/stats');
@@ -245,73 +214,20 @@ async function loadStats() {
     $('#st-bytes').textContent = formatBytes(data.totalBytes || 0);
     $('#st-time').textContent = formatDuration(data.totalDuration || 0);
     $('#st-avg').textContent = formatSpeed(data.avgSpeed || 0);
-    drawHistoryChart(data.recent || []);
-    drawTrustChart(data.recent || []);
-    if (data.recent && data.recent.length) {
-      updateGaugeSpeed(data.recent[data.recent.length - 1].speed || 0);
+
+    const maxDl = 20;
+    Charts.drawRing($('#ring-downloads'), Math.min((data.totalDownloads || 0) / maxDl, 1), 'DL', '#3b82f6');
+    const maxGB = 10 * 1024 * 1024 * 1024;
+    Charts.drawRing($('#ring-data'), Math.min((data.totalBytes || 0) / maxGB, 1), 'DATA', '#06b6d4');
+    Charts.drawHistoryChart($('#history-chart'), data.recent || []);
+    Charts.drawTrustRadar($('#trust-chart'), data.recent || []);
+
+    if (data.recent?.length) {
+      Charts.drawSpeedometer($('#speed-gauge'), data.recent[data.recent.length - 1].speed || 0);
+      $('#gauge-speed').textContent = formatSpeed(data.recent[data.recent.length - 1].speed || 0);
     }
   } catch {}
 }
 
-function drawHistoryChart(recent) {
-  const canvas = $('#history-chart');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const w = canvas.parentElement.clientWidth - 32;
-  canvas.width = w;
-  const h = canvas.height;
-  ctx.clearRect(0, 0, w, h);
-  if (!recent.length) return;
-
-  const pad = 30;
-  const maxSpeed = Math.max(...recent.map(r => r.speed), 1);
-  const barW = Math.max(20, (w - pad * 2) / recent.length - 6);
-
-  recent.forEach((r, i) => {
-    const bh = ((r.speed / maxSpeed) * (h - pad * 2));
-    const x = pad + i * (barW + 6);
-    const y = h - pad - bh;
-    const grad = ctx.createLinearGradient(x, y, x, h - pad);
-    grad.addColorStop(0, '#06b6d4');
-    grad.addColorStop(1, '#3b82f6');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.roundRect(x, y, barW, bh, 4);
-    ctx.fill();
-  });
-
-  ctx.fillStyle = '#8ba3c7';
-  ctx.font = '11px sans-serif';
-  ctx.fillText('Speed per download (MB/s)', pad, 16);
-}
-
-function drawTrustChart(recent) {
-  const canvas = $('#trust-chart');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const w = canvas.parentElement.clientWidth - 32;
-  canvas.width = w;
-  const h = canvas.height;
-  ctx.clearRect(0, 0, w, h);
-  if (!recent.length) return;
-
-  const pad = 30;
-  const barW = Math.max(20, (w - pad * 2) / recent.length - 6);
-
-  recent.forEach((r, i) => {
-    const x = pad + i * (barW + 6);
-    const ih = ((r.integrity / 100) * (h - pad * 2));
-    const th = ((r.trust / 100) * (h - pad * 2));
-    ctx.fillStyle = 'rgba(34,197,94,.7)';
-    ctx.fillRect(x, h - pad - ih, barW / 2 - 1, ih);
-    ctx.fillStyle = 'rgba(59,130,246,.7)';
-    ctx.fillRect(x + barW / 2 + 1, h - pad - th, barW / 2 - 1, th);
-  });
-
-  ctx.fillStyle = '#8ba3c7';
-  ctx.font = '11px sans-serif';
-  ctx.fillText('■ Integrity  ■ Trust', pad, 16);
-}
-
 connectSSE();
-drawGauge(0);
+Charts.drawSpeedometer($('#speed-gauge'), 0);

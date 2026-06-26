@@ -3,4 +3,5 @@
 .exe
 shiryu_cli
 shiryu_gui
+shiryu_app
 target/
