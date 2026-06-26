@@ -122,70 +122,67 @@ func Start() {
 			continue
 		}
 
-		finalPath := filepath.Join(currentSession.SessionDir, currentSession.Metadata.Filename)
-		computed, cerr := integrity.CalculateSHA256(finalPath)
-		if cerr != nil {
-			ui.PrintWarning("Failed to compute SHA256: " + cerr.Error())
-			logger.LogError("Failed to compute SHA256: " + cerr.Error())
-		} else {
-			ui.PrintInfo("Computed SHA256: " + computed)
-			logger.LogInfo("Computed SHA256: " + computed)
+		finalPath := currentSession.FinalFilePath
+		if finalPath == "" {
+			finalPath = filepath.Join(currentSession.SessionDir, currentSession.Metadata.Filename)
+			currentSession.FinalFilePath = finalPath
+		}
+		if absPath, err := filepath.Abs(finalPath); err == nil {
+			finalPath = absPath
+			currentSession.FinalFilePath = absPath
 		}
 
-		zlog := filepath.Join(currentSession.SessionDir, "downloader.log")
-		if data, err := os.ReadFile(zlog); err == nil {
-			logger.LogInfo("Downloader log:\n" + string(data))
-			lines := strings.Split(string(data), "\n")
-			var durS float64
-			var avg float64
-			var checksum string
-			var match bool
-			for _, L := range lines {
-				if strings.HasPrefix(L, "DURATION_SECONDS:") {
-					fmt.Sscanf(L, "DURATION_SECONDS: %f", &durS)
-				}
-				if strings.HasPrefix(L, "AVERAGE_SPEED_MBPS:") {
-					fmt.Sscanf(L, "AVERAGE_SPEED_MBPS: %f", &avg)
-				}
-				if strings.HasPrefix(L, "CHECKSUM:") {
-					parts := strings.SplitN(L, ":", 2)
-					if len(parts) == 2 {
-						checksum = strings.TrimSpace(parts[1])
-					}
-				}
-				if strings.HasPrefix(L, "CHECKSUM_MATCH:") {
-					parts := strings.SplitN(L, ":", 2)
-					if len(parts) == 2 {
-						match = strings.TrimSpace(parts[1]) == "true"
-					}
-				}
-			}
-			currentSession.DownloadTime = time.Duration(durS * float64(time.Second))
-			currentSession.DownloadSpeed = avg
-			currentSession.Checksum = checksum
-			logger.LogSummary(
-				currentSession.Metadata.Filename,
-				currentSession.Metadata.Size,
-				currentSession.DownloadTime,
-				currentSession.DownloadSpeed,
-				currentSession.Workers,
-				currentSession.Checksum,
-				match,
-			)
-
-			percent := ui.ComputeChecksumSimilarity(checksum, expectedChecksum)
-			ui.PrintIntegrityCheckEnhanced(checksum, expectedChecksum, match, percent)
-		} else {
-			if computed != "" {
-				percent := ui.ComputeChecksumSimilarity(computed, expectedChecksum)
-				ui.PrintIntegrityCheckEnhanced(computed, expectedChecksum, strings.EqualFold(computed, expectedChecksum), percent)
-				logger.LogInfo(fmt.Sprintf("Integrity check: %v", strings.EqualFold(computed, expectedChecksum)))
+		downloadedSize := fileSizeOrDefault(finalPath, currentSession.Metadata.Size)
+		var checksumMatch bool
+		var checksumErr error
+		if strings.TrimSpace(expectedChecksum) != "" {
+			currentSession.Checksum, checksumErr = integrity.CalculateSHA256(finalPath)
+			if checksumErr != nil {
+				logger.LogError("Failed to compute SHA256: " + checksumErr.Error())
+			} else {
+				checksumMatch = strings.EqualFold(currentSession.Checksum, expectedChecksum)
+				logger.LogInfo("Computed SHA256: " + currentSession.Checksum)
+				logger.LogInfo(fmt.Sprintf("Integrity check: %v", checksumMatch))
 			}
 		}
 
-		ui.PrintSuccess("Download completed successfully")
+		logger.LogSummary(
+			currentSession.Metadata.Filename,
+			downloadedSize,
+			currentSession.DownloadTime,
+			currentSession.DownloadSpeed,
+			currentSession.Workers,
+			currentSession.Checksum,
+			checksumMatch,
+		)
 		logger.LogInfo("Download completed successfully")
 		logger.Close()
+
+		ui.ClearScreen()
+		ui.PrintDownloadSummary(
+			currentSession.Metadata.Filename,
+			downloadedSize,
+			currentSession.DownloadTime,
+			currentSession.DownloadSpeed,
+			currentSession.Workers,
+			finalPath,
+		)
+		if strings.TrimSpace(expectedChecksum) != "" {
+			if checksumErr != nil {
+				ui.PrintWarning("SHA256 could not be calculated: " + checksumErr.Error())
+			} else {
+				percent := ui.ComputeChecksumSimilarity(currentSession.Checksum, expectedChecksum)
+				ui.PrintIntegrityCheckEnhanced(currentSession.Checksum, expectedChecksum, checksumMatch, percent)
+			}
+		}
+
+		if promptAfterDownload(reader) {
+			ui.PrintInfo("Exiting...")
+			return
+		}
+
+		ui.ClearScreen()
+		ui.PrintBanner()
 	}
 }
 
@@ -203,19 +200,50 @@ func promptURL(reader *bufio.Reader) (string, string) {
 	return s, ""
 }
 
+func promptAfterDownload(reader *bufio.Reader) bool {
+	for {
+		fmt.Print(ui.ColorGreen + "\nPress Enter to return to the menu or type 'exit' to quit: " + ui.ColorReset)
+		response, _ := reader.ReadString('\n')
+		action := strings.ToLower(strings.TrimSpace(response))
+		switch action {
+		case "", "menu", "m", "back":
+			return false
+		case "exit", "quit", "q":
+			return true
+		default:
+			ui.PrintWarning("Unknown option. Press Enter to return to the menu or type 'exit' to quit.")
+		}
+	}
+}
+
 func performDownload(_ *bufio.Reader, _ *ui.Logger, expectedChecksum string) error {
 	aria2path, _ := exec.LookPath("aria2c")
 	start := time.Now()
 	if aria2path != "" {
-		args := []string{"-x", strconv.Itoa(currentSession.Workers), "-s", strconv.Itoa(currentSession.Workers), "-k", "1M", "-d", currentSession.SessionDir, "-o", currentSession.Metadata.Filename, currentSession.URL}
+		args := []string{
+			"--console-log-level=error",
+			"--summary-interval=0",
+			"--show-console-readout=false",
+			"--download-result=hide",
+			"-x", strconv.Itoa(currentSession.Workers),
+			"-s", strconv.Itoa(currentSession.Workers),
+			"-k", "1M",
+			"-d", currentSession.SessionDir,
+			"-o", currentSession.Metadata.Filename,
+			currentSession.URL,
+		}
 		cmd := exec.Command(aria2path, args...)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
+		cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C", "LANGUAGE=C")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			msg := strings.TrimSpace(string(output))
+			if msg != "" {
+				return fmt.Errorf("aria2c failed: %w: %s", err, msg)
+			}
 			return fmt.Errorf("aria2c failed: %w", err)
 		}
 		currentSession.FinalFilePath = filepath.Join(currentSession.SessionDir, currentSession.Metadata.Filename)
-		createDownloaderLog(currentSession.SessionDir, start, time.Now(), currentSession.Workers, currentSession.Metadata.Filename, currentSession.Metadata.Size, expectedChecksum)
+		recordDownloadStats(start, time.Now(), expectedChecksum)
 		return nil
 	}
 
@@ -229,13 +257,14 @@ func performDownload(_ *bufio.Reader, _ *ui.Logger, expectedChecksum string) err
 		return fmt.Errorf("merge failed: %w", err)
 	}
 	currentSession.FinalFilePath = finalPath
-	createDownloaderLog(currentSession.SessionDir, start, time.Now(), currentSession.Workers, currentSession.Metadata.Filename, currentSession.Metadata.Size, expectedChecksum)
+	recordDownloadStats(start, time.Now(), expectedChecksum)
 	return nil
 }
 
 func createDownloaderLog(sessionDir string, start time.Time, end time.Time, workers int, filename string, sizeBytes int64, expectedChecksum string) {
-	duration := end.Sub(start).Seconds()
-	avg := (float64(sizeBytes) / (1024.0 * 1024.0)) / duration
+	duration := end.Sub(start)
+	durationSeconds := duration.Seconds()
+	avg := averageSpeedMBps(sizeBytes, duration)
 	logPath := filepath.Join(sessionDir, "downloader.log")
 	f, err := os.Create(logPath)
 	if err != nil {
@@ -244,7 +273,7 @@ func createDownloaderLog(sessionDir string, start time.Time, end time.Time, work
 	defer f.Close()
 	fmt.Fprintf(f, "START_TIME: %d\n", start.UnixNano())
 	fmt.Fprintf(f, "END_TIME: %d\n", end.UnixNano())
-	fmt.Fprintf(f, "DURATION_SECONDS: %f\n", duration)
+	fmt.Fprintf(f, "DURATION_SECONDS: %f\n", durationSeconds)
 	fmt.Fprintf(f, "AVERAGE_SPEED_MBPS: %f\n", avg)
 	fmt.Fprintf(f, "WORKERS: %d\n", workers)
 	fmt.Fprintf(f, "FILE: %s\n", filename)
@@ -262,14 +291,37 @@ func createDownloaderLog(sessionDir string, start time.Time, end time.Time, work
 				fmt.Fprintln(f, "MESSAGE: checksum mismatch")
 			}
 		}
-	} else {
-		computed, err := integrity.CalculateSHA256(filepath.Join(sessionDir, filename))
-		if err == nil {
-			fmt.Fprintf(f, "CHECKSUM: %s\n", computed)
-			fmt.Fprintln(f, "CHECKSUM_MATCH: true")
-			fmt.Fprintln(f, "STATUS: OK")
-		}
 	}
+}
+
+func recordDownloadStats(start time.Time, end time.Time, expectedChecksum string) {
+	sizeBytes := fileSizeOrDefault(currentSession.FinalFilePath, currentSession.Metadata.Size)
+	currentSession.DownloadTime = end.Sub(start)
+	currentSession.DownloadSpeed = averageSpeedMBps(sizeBytes, currentSession.DownloadTime)
+	createDownloaderLog(
+		currentSession.SessionDir,
+		start,
+		end,
+		currentSession.Workers,
+		currentSession.Metadata.Filename,
+		sizeBytes,
+		expectedChecksum,
+	)
+}
+
+func fileSizeOrDefault(path string, fallback int64) int64 {
+	if info, err := os.Stat(path); err == nil && !info.IsDir() {
+		return info.Size()
+	}
+	return fallback
+}
+
+func averageSpeedMBps(sizeBytes int64, duration time.Duration) float64 {
+	seconds := duration.Seconds()
+	if seconds <= 0 {
+		return 0
+	}
+	return (float64(sizeBytes) / (1024.0 * 1024.0)) / seconds
 }
 
 func performIntegrityCheck(reader *bufio.Reader, logger *ui.Logger) (bool, string, error) {

@@ -2,6 +2,9 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -15,6 +18,20 @@ const (
 	ColorCyan    = "\033[36m"
 	ColorMagenta = "\033[35m"
 )
+
+func ClearScreen() {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "linux", "darwin":
+		cmd = exec.Command("clear")
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "cls")
+	default:
+		return
+	}
+	cmd.Stdout = os.Stdout
+	_ = cmd.Run()
+}
 
 func PrintBanner() {
 	banner := `
@@ -93,17 +110,8 @@ func PromptChecksum() string {
 }
 
 func PrintFileInfo(filename string, sizeBytes int64) {
-	sizeMB := float64(sizeBytes) / (1024 * 1024)
-	var sizeStr string
-
-	if sizeMB > 1024 {
-		sizeStr = fmt.Sprintf("%.2f GB", sizeMB/1024)
-	} else {
-		sizeStr = fmt.Sprintf("%.2f MB", sizeMB)
-	}
-
 	fmt.Printf("%sFile: %s%s\n", ColorYellow, filename, ColorReset)
-	fmt.Printf("%sSize: %s%s\n", ColorYellow, sizeStr, ColorReset)
+	fmt.Printf("%sSize: %s%s\n", ColorYellow, formatBytes(sizeBytes), ColorReset)
 }
 
 func PrintThreadingInfo(available bool, workers int) {
@@ -160,22 +168,34 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%02d:%02d", minutes, seconds)
 }
 
-func PrintDownloadSummary(filename string, sizeBytes int64, duration time.Duration, speed float64, workers int) {
-	sizeMB := float64(sizeBytes) / (1024 * 1024)
-	var sizeStr string
-
-	if sizeMB > 1024 {
-		sizeStr = fmt.Sprintf("%.2f GB", sizeMB/1024)
-	} else {
-		sizeStr = fmt.Sprintf("%.2f MB", sizeMB)
-	}
-
-	fmt.Printf("\n%s=== Download Summary ===%s\n", ColorGreen, ColorReset)
+func PrintDownloadSummary(filename string, sizeBytes int64, duration time.Duration, speed float64, workers int, outputPath string) {
+	fmt.Printf("%s=== Download Complete ===%s\n", ColorGreen, ColorReset)
 	fmt.Printf("%sFile:%s %s\n", ColorYellow, ColorReset, filename)
-	fmt.Printf("%sSize:%s %s\n", ColorYellow, ColorReset, sizeStr)
-	fmt.Printf("%sTime:%s %s\n", ColorYellow, ColorReset, formatDuration(duration))
+	fmt.Printf("%sDownloaded Size:%s %s\n", ColorYellow, ColorReset, formatBytes(sizeBytes))
+	fmt.Printf("%sElapsed Time:%s %s\n", ColorYellow, ColorReset, formatDuration(duration))
 	fmt.Printf("%sAverage Speed:%s %.2f MB/s\n", ColorYellow, ColorReset, speed)
 	fmt.Printf("%sWorkers Used:%s %d\n", ColorYellow, ColorReset, workers)
+	fmt.Printf("%sSaved To:%s %s\n", ColorYellow, ColorReset, outputPath)
+}
+
+func formatBytes(sizeBytes int64) string {
+	if sizeBytes < 0 {
+		sizeBytes = 0
+	}
+
+	const unit = 1024.0
+	size := float64(sizeBytes)
+	units := []string{"B", "KB", "MB", "GB", "TB"}
+	for _, suffix := range units {
+		if size < unit || suffix == units[len(units)-1] {
+			if suffix == "B" {
+				return fmt.Sprintf("%d %s", sizeBytes, suffix)
+			}
+			return fmt.Sprintf("%.2f %s", size, suffix)
+		}
+		size /= unit
+	}
+	return fmt.Sprintf("%d B", sizeBytes)
 }
 
 func PrintIntegrityCheck(computed string, expected string, matches bool) {
