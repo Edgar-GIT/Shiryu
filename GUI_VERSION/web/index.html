@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shiryu</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="nav">
+    <button class="nav-btn active" data-page="home">Home</button>
+    <button class="nav-btn" data-page="download">Download</button>
+    <button class="nav-btn" data-page="stats">Stats</button>
+  </nav>
+
+  <section id="page-home" class="page active">
+    <header class="banner-wrap">
+      <div class="banner-glass">
+        <div class="rainbow-shine"></div>
+        <div class="glass-overlay"></div>
+        <svg class="banner-logo" viewBox="0 0 400 200" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="rainbow" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" class="g-stop1"/>
+              <stop offset="20%" class="g-stop2"/>
+              <stop offset="40%" class="g-stop3"/>
+              <stop offset="60%" class="g-stop4"/>
+              <stop offset="80%" class="g-stop5"/>
+              <stop offset="100%" class="g-stop6"/>
+            </linearGradient>
+            <filter id="glow">
+              <feGaussianBlur stdDeviation="2" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+          <g class="wheel" fill="url(#rainbow)" stroke="#0a0a12" stroke-width="4" filter="url(#glow)">
+            <circle cx="200" cy="105" r="72" fill="none" stroke-width="8"/>
+            <line x1="200" y1="33" x2="200" y2="177" stroke-width="6"/>
+            <line x1="128" y1="105" x2="272" y2="105" stroke-width="6"/>
+            <line x1="149" y1="54" x2="251" y2="156" stroke-width="6"/>
+            <line x1="251" y1="54" x2="149" y2="156" stroke-width="6"/>
+            <circle cx="200" cy="105" r="14"/>
+            <circle cx="200" cy="33" r="8"/><circle cx="200" cy="177" r="8"/>
+            <circle cx="128" cy="105" r="8"/><circle cx="272" cy="105" r="8"/>
+            <circle cx="149" cy="54" r="8"/><circle cx="251" cy="156" r="8"/>
+            <circle cx="251" cy="54" r="8"/><circle cx="149" cy="156" r="8"/>
+          </g>
+          <g class="letters" fill="url(#rainbow)" stroke="#0a0a12" stroke-width="5" filter="url(#glow)">
+            <path d="M115 155 L115 55 L175 55 L175 85 L150 85 L150 155 Z"/>
+            <path d="M155 155 L155 55 L215 55 L215 85 L190 85 L190 155 Z" transform="translate(70,0)"/>
+          </g>
+        </svg>
+        <h1 class="banner-title">SHIRYU</h1>
+        <p class="banner-sub">Ultra fast download booster</p>
+      </div>
+    </header>
+
+    <main class="home-card">
+      <label class="input-label" for="url-input">Download URL</label>
+      <input id="url-input" class="url-input" type="url" placeholder="https://example.com/file.zip" autocomplete="off">
+      <div id="meta-preview" class="meta-preview hidden"></div>
+
+      <div class="options">
+        <label class="check"><input type="checkbox" id="opt-threads" checked> Multi-thread</label>
+        <label class="check"><input type="checkbox" id="opt-integrity"> Integrity check</label>
+        <label class="check"><input type="checkbox" id="opt-clear"> Clear target folder</label>
+      </div>
+      <input id="checksum-input" class="url-input hidden" type="text" placeholder="SHA256 checksum (optional)">
+
+      <button id="start-btn" class="start-btn disabled" disabled>Enter a valid URL</button>
+    </main>
+  </section>
+
+  <section id="page-download" class="page">
+    <div class="download-card">
+      <div class="status-badge" id="dl-status">IDLE</div>
+      <h2 id="dl-filename">—</h2>
+
+      <div class="progress-wrap">
+        <div class="progress-bar" id="dl-bar"></div>
+      </div>
+      <div class="progress-text">
+        <span id="dl-percent">0%</span>
+        <span id="dl-size">0 B / 0 B</span>
+      </div>
+
+      <div class="dl-stats">
+        <div class="stat-box">
+          <span class="stat-label">Speed</span>
+          <span class="stat-value" id="dl-speed">0 MB/s</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">Elapsed</span>
+          <span class="stat-value" id="dl-elapsed">00:00</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">Remaining</span>
+          <span class="stat-value" id="dl-eta">--:--</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">Workers</span>
+          <span class="stat-value" id="dl-workers">0</span>
+        </div>
+      </div>
+
+      <div class="controls" id="dl-controls">
+        <button class="ctrl-btn resume" data-action="resume">Continue</button>
+        <button class="ctrl-btn pause" data-action="pause">Pause</button>
+        <button class="ctrl-btn restart" data-action="restart">Restart</button>
+        <button class="ctrl-btn stop" data-action="stop">Stop</button>
+      </div>
+
+      <div id="corruption-panel" class="corruption-panel hidden">
+        <p class="corruption-msg">Corruption detected near <span id="corr-pct">0</span>%</p>
+        <button class="ctrl-btn restart" data-recover="restart">Full Restart</button>
+        <button class="ctrl-btn resume" data-recover="resume">Resume from point</button>
+      </div>
+
+      <div id="complete-panel" class="complete-panel hidden">
+        <div class="integrity-row">
+          <span>Integrity</span>
+          <div class="meter"><div id="meter-integrity" class="meter-fill"></div></div>
+          <span id="val-integrity">0%</span>
+        </div>
+        <div class="integrity-row">
+          <span>Trust</span>
+          <div class="meter"><div id="meter-trust" class="meter-fill trust"></div></div>
+          <span id="val-trust">0%</span>
+        </div>
+        <p class="output-path" id="dl-output"></p>
+        <button class="start-btn ready" id="back-home">Back to Home</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="page-stats" class="page">
+    <div class="stats-grid">
+      <div class="stats-card gauge-card">
+        <h3>Current Speed</h3>
+        <canvas id="speed-gauge" width="220" height="220"></canvas>
+        <p class="gauge-label" id="gauge-speed">0 MB/s</p>
+      </div>
+      <div class="stats-card">
+        <h3>Overview</h3>
+        <div class="overview-stats">
+          <div class="ov-item"><span>Downloads</span><strong id="st-total">0</strong></div>
+          <div class="ov-item"><span>Total Data</span><strong id="st-bytes">0 B</strong></div>
+          <div class="ov-item"><span>Total Time</span><strong id="st-time">00:00</strong></div>
+          <div class="ov-item"><span>Avg Speed</span><strong id="st-avg">0 MB/s</strong></div>
+        </div>
+      </div>
+      <div class="stats-card wide">
+        <h3>Download History</h3>
+        <canvas id="history-chart" height="160"></canvas>
+      </div>
+      <div class="stats-card wide">
+        <h3>Integrity vs Trust</h3>
+        <canvas id="trust-chart" height="160"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
