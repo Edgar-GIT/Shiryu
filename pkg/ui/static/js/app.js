@@ -106,26 +106,74 @@ function isLiveDownload(state, paused) {
   return (state === 'downloading' || state === 'merging') && !paused;
 }
 
-function quietDownloadUI(badge) {
-  const b = (badge || 'idle').toLowerCase();
-  $('#dl-status').textContent = b.toUpperCase();
-  $('#dl-status').className = 'status-badge ' + b;
-  $('#dl-percent').textContent = '0.0%';
-  $('#dl-size').textContent = '0 B / 0 B';
-  $('#dl-speed').textContent = '0.00 MB/s';
-  $('#dl-elapsed').textContent = '00:00';
-  $('#dl-eta').textContent = '--:--';
-  $('#dl-workers').textContent = '0';
+let metricsSnapshot = null;
+
+function snapshotFrom(d) {
+  return {
+    percent: d.percent || 0,
+    progress: d.progress || 0,
+    total: d.total || 0,
+    speed: d.speed || 0,
+    elapsed: d.elapsed || 0,
+    eta: d.eta || 0,
+    workers: d.workers || 0,
+    filename: d.filename || '—',
+  };
+}
+
+const idleMetrics = {
+  percent: 0, progress: 0, total: 0, speed: 0, elapsed: 0, eta: 0, workers: 0, filename: '—',
+};
+
+function applyMetrics(m) {
+  $('#dl-percent').textContent = m.percent.toFixed(1) + '%';
+  $('#dl-size').textContent = `${formatBytes(m.progress)} / ${formatBytes(m.total)}`;
+  $('#dl-speed').textContent = formatSpeed(m.speed);
+  $('#dl-elapsed').textContent = formatDuration(m.elapsed);
+  $('#dl-eta').textContent = m.eta > 0 ? formatDuration(m.eta) : '--:--';
+  $('#dl-workers').textContent = m.workers || 0;
+  $('#dl-filename').textContent = m.filename;
   const track = $('#animal-track');
   const runner = $('#runner');
   const trackFill = $('#track-fill');
   if (track && runner && trackFill) {
-    runner.style.left = '2%';
-    trackFill.style.width = '0%';
-    track.classList.remove('running', 'paused');
+    const pos = Math.min(Math.max(m.percent, 2), 98);
+    runner.style.left = pos + '%';
+    trackFill.style.width = m.percent + '%';
   }
+}
+
+function setBadge(state, paused) {
+  let badge = state || 'idle';
+  if (paused && badge === 'downloading') badge = 'paused';
+  $('#dl-status').textContent = badge.toUpperCase();
+  $('#dl-status').className = 'status-badge ' + (paused ? 'paused' : badge);
+}
+
+function setAnimalRunning(running, paused) {
+  const track = $('#animal-track');
+  if (!track) return;
+  track.classList.toggle('running', running);
+  track.classList.toggle('paused', paused && !running);
+}
+
+function idleDownloadUI() {
+  metricsSnapshot = null;
+  applyMetrics(idleMetrics);
+  setBadge('idle');
+  setAnimalRunning(false, false);
+  $('#dl-controls').classList.add('hidden');
   $('#corruption-panel').classList.add('hidden');
   $('#complete-panel').classList.add('hidden');
+}
+
+function updateChromeOnly(d) {
+  const paused = d.paused || d.state === 'paused';
+  setBadge(d.state, paused);
+  if (d.filename) $('#dl-filename').textContent = d.filename;
+  setAnimalRunning(false, paused || d.state === 'paused');
+  const showControls = ['downloading', 'paused', 'merging'].includes(d.state);
+  $('#dl-controls').classList.toggle('hidden', !showControls);
 }
 
 function showPage(name) {
@@ -136,19 +184,8 @@ function showPage(name) {
   if (name === 'stats') loadStats();
   if (name === 'download') {
     connectSSE();
-    if (lastDownloadState && isLiveDownload(lastDownloadState.state, lastDownloadState.paused)) {
-      updateDownloadUI(lastDownloadState);
-    } else if (lastDownloadState?.state === 'completed' || lastDownloadState?.state === 'corruption') {
-      updateDownloadUI(lastDownloadState);
-    } else {
-      const badge = lastDownloadState?.paused || lastDownloadState?.state === 'paused' ? 'paused'
-        : lastDownloadState?.state === 'stopped' ? 'stopped' : 'idle';
-      quietDownloadUI(badge);
-      if (lastDownloadState?.filename) $('#dl-filename').textContent = lastDownloadState.filename;
-      else $('#dl-filename').textContent = '—';
-      const showControls = lastDownloadState && ['downloading', 'paused', 'merging'].includes(lastDownloadState.state);
-      $('#dl-controls').classList.toggle('hidden', !showControls);
-    }
+    if (lastDownloadState) updateDownloadUI(lastDownloadState, true);
+    else idleDownloadUI();
   }
 }
 
@@ -269,13 +306,12 @@ function connectSSE() {
         updateDownloadUI(d);
       } else if (d.state === 'completed' || d.state === 'corruption') {
         updateDownloadUI(d);
+      } else if (metricsSnapshot && (d.paused || d.state === 'paused' || d.state === 'stopped')) {
+        updateChromeOnly(d);
+      } else if (d.state === 'idle' || !d.filename) {
+        idleDownloadUI();
       } else {
-        const badge = d.paused || d.state === 'paused' ? 'paused'
-          : d.state === 'stopped' ? 'stopped' : 'idle';
-        quietDownloadUI(badge);
-        if (d.filename) $('#dl-filename').textContent = d.filename;
-        const showControls = ['downloading', 'paused', 'merging'].includes(d.state);
-        $('#dl-controls').classList.toggle('hidden', !showControls);
+        updateDownloadUI(d);
       }
     }
     const speed = (lastDownloadState || data).speed || 0;
