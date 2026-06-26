@@ -329,25 +329,14 @@ function connectSSE() {
   };
 }
 
-function updateDownloadUI(d) {
-  if (!d) { quietDownloadUI(); return; }
+function updateDownloadUI(d, fromNav) {
+  if (!d) { idleDownloadUI(); return; }
 
   if (d.state === 'completed') {
-    $('#dl-status').textContent = 'COMPLETED';
-    $('#dl-status').className = 'status-badge completed';
-    $('#dl-filename').textContent = d.filename || '—';
-    $('#dl-percent').textContent = '100.0%';
-    $('#dl-size').textContent = `${formatBytes(d.total || 0)} / ${formatBytes(d.total || 0)}`;
-    $('#dl-speed').textContent = formatSpeed(d.speed || 0);
-    $('#dl-elapsed').textContent = formatDuration(d.elapsed || 0);
-    $('#dl-eta').textContent = '--:--';
-    $('#dl-workers').textContent = d.workers || 0;
-    const track = $('#animal-track');
-    if (track) {
-      $('#runner').style.left = '98%';
-      $('#track-fill').style.width = '100%';
-      track.classList.remove('running', 'paused');
-    }
+    metricsSnapshot = snapshotFrom({ ...d, percent: 100, progress: d.total, eta: 0 });
+    applyMetrics(metricsSnapshot);
+    setBadge('completed');
+    setAnimalRunning(false, false);
     $('#dl-controls').classList.add('hidden');
     $('#corruption-panel').classList.add('hidden');
     $('#complete-panel').classList.remove('hidden');
@@ -360,51 +349,40 @@ function updateDownloadUI(d) {
   }
 
   if (d.state === 'corruption') {
-    quietDownloadUI('corruption');
+    if (!metricsSnapshot) metricsSnapshot = snapshotFrom(d);
+    applyMetrics(metricsSnapshot);
+    setBadge('corruption');
+    setAnimalRunning(false, false);
     $('#dl-filename').textContent = d.filename || '—';
     $('#corruption-panel').classList.remove('hidden');
     $('#dl-controls').classList.add('hidden');
+    $('#complete-panel').classList.add('hidden');
     $('#corr-pct').textContent = (d.corruptionPercent || 0).toFixed(1);
     return;
   }
 
-  if (!isLiveDownload(d.state, d.paused)) {
-    const badge = d.paused || d.state === 'paused' ? 'paused'
-      : d.state === 'stopped' ? 'stopped' : 'idle';
-    quietDownloadUI(badge);
-    $('#dl-filename').textContent = d.filename || '—';
-    $('#dl-controls').classList.toggle('hidden', !['downloading', 'paused', 'merging'].includes(d.state));
+  if (isLiveDownload(d.state, d.paused)) {
+    metricsSnapshot = snapshotFrom(d);
+    applyMetrics(metricsSnapshot);
+    setBadge('downloading');
+    setAnimalRunning(true, false);
+    $('#dl-controls').classList.remove('hidden');
+    $('#corruption-panel').classList.add('hidden');
+    $('#complete-panel').classList.add('hidden');
     return;
   }
 
-  const status = $('#dl-status');
-  status.textContent = 'DOWNLOADING';
-  status.className = 'status-badge downloading';
-
-  $('#dl-filename').textContent = d.filename || '—';
-  const pct = d.percent || 0;
-  $('#dl-percent').textContent = pct.toFixed(1) + '%';
-  $('#dl-size').textContent = `${formatBytes(d.progress || 0)} / ${formatBytes(d.total || 0)}`;
-
-  const track = $('#animal-track');
-  const runner = $('#runner');
-  const trackFill = $('#track-fill');
-  if (track && runner && trackFill) {
-    const pos = Math.min(Math.max(pct, 2), 98);
-    runner.style.left = pos + '%';
-    trackFill.style.width = pos + '%';
-    track.classList.add('running');
-    track.classList.remove('paused');
+  if (d.paused || d.state === 'paused' || d.state === 'stopped') {
+    if (!fromNav || !metricsSnapshot) metricsSnapshot = snapshotFrom(d);
+    applyMetrics(metricsSnapshot);
+    updateChromeOnly(d);
+    $('#corruption-panel').classList.add('hidden');
+    $('#complete-panel').classList.add('hidden');
+    if (d.state === 'stopped') $('#dl-controls').classList.add('hidden');
+    return;
   }
 
-  $('#dl-speed').textContent = formatSpeed(d.speed || 0);
-  $('#dl-elapsed').textContent = formatDuration(d.elapsed || 0);
-  $('#dl-eta').textContent = d.eta > 0 ? formatDuration(d.eta) : '--:--';
-  $('#dl-workers').textContent = d.workers || 0;
-
-  $('#dl-controls').classList.remove('hidden');
-  $('#corruption-panel').classList.add('hidden');
-  $('#complete-panel').classList.add('hidden');
+  idleDownloadUI();
 }
 
 async function sendControl(action) {
@@ -418,14 +396,7 @@ async function sendControl(action) {
     if (!res.ok) throw new Error(data.error || 'Failed');
     lastDownloadState = data;
     downloadActive = isSessionActive(data.state);
-    if (action === 'resume' || action === 'restart') {
-      updateDownloadUI(data);
-    } else {
-      const badge = action === 'pause' ? 'paused' : 'stopped';
-      quietDownloadUI(badge);
-      if (data.filename) $('#dl-filename').textContent = data.filename;
-      $('#dl-controls').classList.toggle('hidden', action !== 'pause');
-    }
+    updateDownloadUI(data);
     if ($('#page-home').classList.contains('active')) restoreHomeState();
   } catch (e) {
     console.error(e);
@@ -485,5 +456,4 @@ async function loadStats() {
 }
 
 connectSSE();
-quietDownloadUI();
-$('#dl-filename').textContent = '—';
+idleDownloadUI();
