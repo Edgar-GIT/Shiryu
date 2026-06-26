@@ -1,7 +1,6 @@
 package core
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,10 +31,11 @@ type DownloadSession struct {
 var currentSession *DownloadSession
 
 func Start() {
-	reader := bufio.NewReader(os.Stdin)
+	inp := util.NewInput()
+	read := inp.ReadLine
 
 	for {
-		url, action := promptURL(reader)
+		url, action := promptURL(read)
 		if action == "exit" {
 			ui.PrintInfo("Exiting...")
 			return
@@ -62,22 +62,21 @@ func Start() {
 
 		ui.PrintFileInfo(metadata.Filename, metadata.Size)
 
-		useThreads := ui.PromptUseThreads(metadata.SupportsRange)
+		useThreads := ui.PromptUseThreads(metadata.SupportsRange, read)
 		workers := 1
 		if useThreads && metadata.SupportsRange {
 			workers = download.CalculateWorkers(metadata.Size)
 		}
 		ui.PrintThreadingInfo(metadata.SupportsRange, workers)
 
-		checkIntegrity := ui.PromptIntegrityCheck()
+		checkIntegrity := ui.PromptIntegrityCheck(read)
 		var expectedChecksum string
 		if checkIntegrity {
-			expectedChecksum = ui.PromptChecksum()
+			expectedChecksum = ui.PromptChecksum(read)
 		}
 
 		fmt.Print(util.Yellow + "Delete existing downloads in target to free space? [y/n]: " + util.Reset)
-		delResp, _ := reader.ReadString('\n')
-		if strings.ToLower(strings.TrimSpace(delResp)) == "y" {
+		if strings.ToLower(strings.TrimSpace(read())) == "y" {
 			if err := utils.ClearTarget(); err != nil {
 				ui.PrintError(fmt.Sprintf("Failed to clear target: %v", err))
 				continue
@@ -111,7 +110,7 @@ func Start() {
 		logger.LogInfo(fmt.Sprintf("File size: %d bytes", metadata.Size))
 		logger.LogInfo(fmt.Sprintf("Workers: %d", workers))
 
-		stopped, corruptionOffset, err := runInteractiveDownload(reader, expectedChecksum)
+		stopped, corruptionOffset, err := runInteractiveDownload(inp, expectedChecksum)
 		if stopped {
 			cleanupOnStop()
 			logger.LogInfo("Download stopped by user")
@@ -163,7 +162,7 @@ func Start() {
 		)
 		showFinalAssessment(finalPath, expectedChecksum, corruptionOffset)
 
-		if promptAfterDownload(reader) {
+		if promptAfterDownload(read) {
 			ui.PrintInfo("Exiting...")
 			return
 		}
@@ -173,10 +172,9 @@ func Start() {
 	}
 }
 
-func promptURL(reader *bufio.Reader) (string, string) {
+func promptURL(read func() string) (string, string) {
 	fmt.Print(util.Green + "Enter download URL (or type 'exit' to quit, 'reset' to clear target): " + util.Reset)
-	url, _ := reader.ReadString('\n')
-	s := strings.TrimSpace(url)
+	s := strings.TrimSpace(read())
 	lower := strings.ToLower(s)
 	if lower == "exit" {
 		return "", "exit"
@@ -187,12 +185,10 @@ func promptURL(reader *bufio.Reader) (string, string) {
 	return s, ""
 }
 
-func promptAfterDownload(reader *bufio.Reader) bool {
+func promptAfterDownload(read func() string) bool {
 	for {
 		fmt.Print(util.Green + "\nPress Enter to return to the menu or type 'exit' to quit: " + util.Reset)
-		response, _ := reader.ReadString('\n')
-		action := strings.ToLower(strings.TrimSpace(response))
-		switch action {
+		switch strings.ToLower(strings.TrimSpace(read())) {
 		case "", "menu", "m", "back":
 			return false
 		case "exit", "quit", "q":

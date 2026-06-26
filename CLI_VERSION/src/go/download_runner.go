@@ -1,7 +1,6 @@
 package core
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,7 +20,7 @@ type downloadResult struct {
 	err     error
 }
 
-func runInteractiveDownload(reader *bufio.Reader, expectedChecksum string) (bool, int64, error) {
+func runInteractiveDownload(inp *util.Input, expectedChecksum string) (bool, int64, error) {
 	mgr := download.NewManager(
 		currentSession.URL,
 		currentSession.Metadata.Size,
@@ -35,7 +34,7 @@ func runInteractiveDownload(reader *bufio.Reader, expectedChecksum string) (bool
 		util.ClearScreen()
 		ui.RenderDownloadScreen(0, mgr.TotalSize(), 0, 0, 0, false)
 
-		result := launchDownload(mgr, reader)
+		result := launchDownload(mgr, inp)
 		if result.stopped {
 			return true, corruptionOffset, nil
 		}
@@ -53,8 +52,7 @@ func runInteractiveDownload(reader *bufio.Reader, expectedChecksum string) (bool
 				ui.ClearScreen()
 				ui.PrintCorruptionPrompt(pct)
 
-				choice, _ := reader.ReadString('\n')
-				switch strings.TrimSpace(choice) {
+				switch strings.TrimSpace(inp.ReadLine()) {
 				case "1":
 					mgr.ResetAll()
 					corruptionOffset = -1
@@ -79,8 +77,7 @@ func runInteractiveDownload(reader *bufio.Reader, expectedChecksum string) (bool
 				pct := float64(off) / float64(mgr.TotalSize()) * 100
 				ui.ClearScreen()
 				ui.PrintCorruptionPrompt(pct)
-				choice, _ := reader.ReadString('\n')
-				switch strings.TrimSpace(choice) {
+				switch strings.TrimSpace(inp.ReadLine()) {
 				case "1":
 					utils.CleanupPartFiles(currentSession.SessionDir, currentSession.Workers)
 					mgr.ResetAll()
@@ -106,24 +103,13 @@ func runInteractiveDownload(reader *bufio.Reader, expectedChecksum string) (bool
 	}
 }
 
-func launchDownload(mgr *download.Manager, reader *bufio.Reader) downloadResult {
-	cmdCh := make(chan string, 4)
+func launchDownload(mgr *download.Manager, inp *util.Input) downloadResult {
+	cmdCh := make(chan string, 8)
 	doneCh := make(chan error, 1)
 	var runID atomic.Int32
 
-	go func() {
-		for {
-			line, err := reader.ReadString('\n')
-			if err != nil {
-				return
-			}
-			cmd := strings.ToLower(strings.TrimSpace(line))
-			select {
-			case cmdCh <- cmd:
-			default:
-			}
-		}
-	}()
+	inp.StartDownload(cmdCh)
+	defer inp.StopDownload()
 
 	startRun := func() {
 		id := runID.Add(1)

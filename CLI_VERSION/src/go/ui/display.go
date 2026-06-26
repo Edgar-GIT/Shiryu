@@ -11,30 +11,26 @@ import (
 func ClearScreen()  { util.ClearScreen() }
 func PrintBanner() { util.PrintBanner() }
 
-func PromptUseThreads(available bool) bool {
+func PromptUseThreads(available bool, read func() string) bool {
 	if !available {
 		fmt.Println(util.Yellow + "NOTE: Server does not support parallel downloads (no Range header support)" + util.Reset)
 		fmt.Println(util.Yellow + "Download will proceed sequentially" + util.Reset)
 		return false
 	}
 	fmt.Print(util.Cyan + "Use multiple threads for faster download? [y/n]: " + util.Reset)
-	var input string
-	fmt.Scanln(&input)
+	input := read()
 	return strings.ToLower(input) == "y" || strings.ToLower(input) == "yes"
 }
 
-func PromptIntegrityCheck() bool {
+func PromptIntegrityCheck(read func() string) bool {
 	fmt.Print(util.Cyan + "Enable integrity check? [y/n]: " + util.Reset)
-	var input string
-	fmt.Scanln(&input)
+	input := read()
 	return strings.ToLower(input) == "y" || strings.ToLower(input) == "yes"
 }
 
-func PromptChecksum() string {
+func PromptChecksum(read func() string) string {
 	fmt.Print(util.Yellow + "Enter expected SHA256 checksum (or press Enter to skip): " + util.Reset)
-	var input string
-	fmt.Scanln(&input)
-	return input
+	return read()
 }
 
 func PrintFileInfo(filename string, size int64) {
