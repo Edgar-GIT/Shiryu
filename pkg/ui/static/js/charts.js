@@ -4,61 +4,66 @@ const Charts = (() => {
   function drawSpeedometer(canvas, speed) {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    const w = canvas.width, h = canvas.height;
-    const cx = w / 2, cy = h - 28;
-    const r = Math.min(w, h) * 0.38;
-    const start = Math.PI * 0.75;
-    const end = Math.PI * 2.25;
+    const w = canvas.width;
+    const h = canvas.height;
+    const cx = w / 2;
+    const cy = h - 22;
+    const r = Math.min(w * 0.36, h * 0.72);
+    const start = Math.PI;
+    const end = 2 * Math.PI;
     const span = end - start;
 
     ctx.clearRect(0, 0, w, h);
 
-    const bgGrad = ctx.createRadialGradient(cx, cy, r * 0.3, cx, cy, r * 1.2);
-    bgGrad.addColorStop(0, '#1e293b');
-    bgGrad.addColorStop(1, '#0f172a');
-    ctx.fillStyle = bgGrad;
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, w, h);
+
     ctx.beginPath();
-    ctx.arc(cx, cy, r + 18, 0, Math.PI * 2);
+    ctx.arc(cx, cy, r + 20, 0, Math.PI * 2);
+    const bezel = ctx.createRadialGradient(cx, cy - r * 0.3, r * 0.2, cx, cy, r + 22);
+    bezel.addColorStop(0, '#334155');
+    bezel.addColorStop(1, '#0f172a');
+    ctx.fillStyle = bezel;
     ctx.fill();
 
     ctx.beginPath();
-    ctx.arc(cx, cy, r + 12, start, end);
-    ctx.strokeStyle = '#334155';
-    ctx.lineWidth = 22;
+    ctx.arc(cx, cy, r + 10, start, end, false);
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 18;
+    ctx.lineCap = 'round';
     ctx.stroke();
 
-    const redStart = start + span * 0.82;
+    const redAt = start + span * 0.82;
     ctx.beginPath();
-    ctx.arc(cx, cy, r + 12, redStart, end);
-    ctx.strokeStyle = 'rgba(239,68,68,.55)';
-    ctx.lineWidth = 22;
+    ctx.arc(cx, cy, r + 10, redAt, end, false);
+    ctx.strokeStyle = 'rgba(239,68,68,.5)';
+    ctx.lineWidth = 18;
     ctx.stroke();
 
-    const pct = Math.min(speed / MAX_SPEED, 1);
+    const pct = Math.min(Math.max(speed / MAX_SPEED, 0), 1);
     const needleAngle = start + span * pct;
 
-    const arcGrad = ctx.createLinearGradient(cx - r, cy, cx + r, cy);
-    arcGrad.addColorStop(0, '#06b6d4');
-    arcGrad.addColorStop(0.5, '#3b82f6');
-    arcGrad.addColorStop(1, '#8b5cf6');
-
-    if (pct > 0.01) {
+    if (pct > 0.005) {
+      const arcGrad = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy - r);
+      arcGrad.addColorStop(0, '#06b6d4');
+      arcGrad.addColorStop(0.5, '#3b82f6');
+      arcGrad.addColorStop(1, '#a855f7');
       ctx.beginPath();
-      ctx.arc(cx, cy, r + 12, start, needleAngle);
+      ctx.arc(cx, cy, r + 10, start, needleAngle, false);
       ctx.strokeStyle = arcGrad;
-      ctx.lineWidth = 22;
+      ctx.lineWidth = 18;
       ctx.lineCap = 'round';
       ctx.shadowColor = '#06b6d4';
-      ctx.shadowBlur = 14;
+      ctx.shadowBlur = 12;
       ctx.stroke();
       ctx.shadowBlur = 0;
     }
 
-    for (let i = 0; i <= 15; i++) {
-      const t = i / 15;
+    for (let i = 0; i <= 10; i++) {
+      const t = i / 10;
       const ang = start + span * t;
-      const major = i % 5 === 0;
-      const inner = r + (major ? 2 : 8);
+      const major = i % 2 === 0;
+      const inner = r + (major ? 4 : 10);
       const outer = r + 16;
       ctx.beginPath();
       ctx.moveTo(cx + Math.cos(ang) * inner, cy + Math.sin(ang) * inner);
@@ -67,52 +72,49 @@ const Charts = (() => {
       ctx.lineWidth = major ? 2 : 1;
       ctx.stroke();
       if (major) {
-        const val = Math.round(t * MAX_SPEED);
-        const tx = cx + Math.cos(ang) * (r - 14);
-        const ty = cy + Math.sin(ang) * (r - 14);
+        const labelR = r + 30;
+        const tx = cx + Math.cos(ang) * labelR;
+        const ty = cy + Math.sin(ang) * labelR;
         ctx.fillStyle = '#8ba3c7';
-        ctx.font = '10px sans-serif';
+        ctx.font = '10px system-ui, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(val, tx, ty);
+        ctx.fillText(String(Math.round(t * MAX_SPEED)), tx, ty);
       }
     }
 
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(needleAngle);
-    const needleGrad = ctx.createLinearGradient(0, 0, r + 8, 0);
-    needleGrad.addColorStop(0, '#ef4444');
-    needleGrad.addColorStop(1, '#fca5a5');
     ctx.beginPath();
-    ctx.moveTo(-10, 0);
-    ctx.lineTo(r + 6, 0);
+    ctx.moveTo(-8, 0);
+    ctx.lineTo(r + 4, 0);
+    ctx.strokeStyle = '#ef4444';
     ctx.lineWidth = 3;
-    ctx.strokeStyle = needleGrad;
+    ctx.lineCap = 'round';
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(0, 0, 9, 0, Math.PI * 2);
+    ctx.arc(0, 0, 8, 0, Math.PI * 2);
     ctx.fillStyle = '#1e293b';
     ctx.fill();
     ctx.strokeStyle = '#64748b';
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(0, 0, 4, 0, Math.PI * 2);
+    ctx.arc(0, 0, 3, 0, Math.PI * 2);
     ctx.fillStyle = '#ef4444';
     ctx.fill();
     ctx.restore();
 
+    const readoutY = cy - r * 0.35;
     ctx.fillStyle = '#e2e8f4';
-    ctx.font = 'bold 22px sans-serif';
+    ctx.font = 'bold 24px system-ui, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(speed < 0.01 ? '0.00' : speed.toFixed(2), cx, cy - 8);
-    ctx.fillStyle = '#8ba3c7';
-    ctx.font = '11px sans-serif';
-    ctx.fillText('MB/s', cx, cy + 10);
-    ctx.fillStyle = '#64748b';
-    ctx.font = '9px sans-serif';
-    ctx.fillText('KM/H', cx, h - 8);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(speed < 0.01 ? '0.00' : speed.toFixed(2), cx, readoutY);
+    ctx.fillStyle = '#06b6d4';
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.fillText('MB/s', cx, readoutY + 18);
   }
 
   function drawRing(canvas, pct, label, color) {
@@ -191,7 +193,6 @@ const Charts = (() => {
     const points = recent.map((r, i) => ({
       x: pad.l + (i / Math.max(recent.length - 1, 1)) * chartW,
       y: pad.t + chartH - (r.speed / maxSpeed) * chartH,
-      speed: r.speed,
     }));
 
     const areaGrad = ctx.createLinearGradient(0, pad.t, 0, h - pad.b);

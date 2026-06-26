@@ -262,7 +262,7 @@ func (s *Session) Snapshot() Progress {
 		p.Speed = s.mgr.GetSpeed()
 		p.Elapsed = s.mgr.Elapsed().Seconds()
 		p.ETA = s.mgr.GetETA().Seconds()
-		p.Paused = s.mgr.IsPaused()
+		p.Paused = s.mgr.IsPaused() || s.state == StatePaused
 	}
 	if s.state == StateCorruption && s.mgr != nil {
 		p.CorruptionPercent = s.mgr.CorruptionPercent()
@@ -284,6 +284,9 @@ func (s *Session) Snapshot() Progress {
 		p.Percent = 100
 		p.Progress = s.metadata.Size
 		p.Total = s.metadata.Size
+	}
+	if s.state == StateStopped && s.mgr != nil {
+		p.Paused = false
 	}
 	if s.state == StateFailed {
 		p.Error = s.errMsg

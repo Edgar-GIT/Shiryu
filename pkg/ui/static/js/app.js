@@ -4,6 +4,20 @@ const $$ = (s) => document.querySelectorAll(s);
 let evtSource = null;
 let metaTimer = null;
 let metadata = null;
+let lastDownloadState = null;
+let homeRestoring = false;
+let downloadActive = false;
+
+const homeState = {
+  url: '',
+  metaHtml: '',
+  metaVisible: false,
+  btnReady: false,
+  threads: true,
+  integrity: false,
+  clear: false,
+  checksum: '',
+};
 
 function formatBytes(n) {
   if (n < 0) n = 0;
@@ -33,12 +47,71 @@ function isValidURL(str) {
   } catch { return false; }
 }
 
+function saveHomeState() {
+  homeState.url = urlInput.value;
+  homeState.metaHtml = metaPreview.innerHTML;
+  homeState.metaVisible = !metaPreview.classList.contains('hidden');
+  homeState.btnReady = startBtn.classList.contains('ready');
+  homeState.threads = $('#opt-threads').checked;
+  homeState.integrity = $('#opt-integrity').checked;
+  homeState.clear = $('#opt-clear').checked;
+  homeState.checksum = checksumInput.value;
+}
+
+function restoreHomeState() {
+  homeRestoring = true;
+  urlInput.value = homeState.url;
+  $('#opt-threads').checked = homeState.threads;
+  $('#opt-integrity').checked = homeState.integrity;
+  $('#opt-clear').checked = homeState.clear;
+  checksumInput.value = homeState.checksum;
+  checksumInput.classList.toggle('hidden', !homeState.integrity);
+
+  if (homeState.metaVisible && homeState.metaHtml) {
+    metaPreview.innerHTML = homeState.metaHtml;
+    metaPreview.classList.remove('hidden');
+  } else {
+    metaPreview.classList.add('hidden');
+  }
+
+  if (downloadActive) {
+    startBtn.disabled = true;
+    startBtn.className = 'start-btn disabled';
+    const label = lastDownloadState?.paused ? 'Download paused' : 'Download in progress';
+    startBtn.textContent = label;
+  } else if (homeState.btnReady && isValidURL(homeState.url)) {
+    startBtn.disabled = false;
+    startBtn.className = 'start-btn ready';
+    startBtn.textContent = 'Start Download';
+  } else if (homeState.url && isValidURL(homeState.url)) {
+    startBtn.disabled = true;
+    startBtn.className = 'start-btn disabled';
+    startBtn.textContent = 'Checking...';
+    metadata = null;
+    clearTimeout(metaTimer);
+    metaTimer = setTimeout(() => fetchMeta(homeState.url), 200);
+  } else {
+    startBtn.disabled = true;
+    startBtn.className = 'start-btn disabled';
+    startBtn.textContent = 'Enter a valid URL';
+  }
+  homeRestoring = false;
+}
+
+function isSessionActive(state) {
+  return ['downloading', 'paused', 'merging', 'corruption'].includes(state);
+}
+
 function showPage(name) {
   $$('.page').forEach(p => p.classList.remove('active'));
   $$('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.page === name));
   $(`#page-${name}`).classList.add('active');
+  if (name === 'home') restoreHomeState();
   if (name === 'stats') loadStats();
-  if (name === 'download') connectSSE();
+  if (name === 'download') {
+    connectSSE();
+    if (lastDownloadState) updateDownloadUI(lastDownloadState);
+  }
 }
 
 $$('.nav-btn').forEach(btn => btn.addEventListener('click', () => showPage(btn.dataset.page)));
@@ -49,8 +122,10 @@ const metaPreview = $('#meta-preview');
 const checksumInput = $('#checksum-input');
 
 urlInput.addEventListener('input', () => {
+  if (homeRestoring || downloadActive) return;
   clearTimeout(metaTimer);
   const v = urlInput.value.trim();
+  saveHomeState();
   if (!isValidURL(v)) {
     startBtn.disabled = true;
     startBtn.className = 'start-btn disabled';
@@ -67,7 +142,12 @@ urlInput.addEventListener('input', () => {
 
 $('#opt-integrity').addEventListener('change', (e) => {
   checksumInput.classList.toggle('hidden', !e.target.checked);
+  saveHomeState();
 });
+
+$('#opt-threads').addEventListener('change', saveHomeState);
+$('#opt-clear').addEventListener('change', saveHomeState);
+checksumInput.addEventListener('input', saveHomeState);
 
 async function fetchMeta(url) {
   try {
@@ -85,18 +165,22 @@ async function fetchMeta(url) {
     startBtn.disabled = false;
     startBtn.className = 'start-btn ready';
     startBtn.textContent = 'Start Download';
+    saveHomeState();
+    homeState.btnReady = true;
   } catch (e) {
+    if (downloadActive) return;
     metaPreview.classList.remove('hidden');
     metaPreview.innerHTML = `<span style="color:var(--red)">${e.message}</span>`;
     startBtn.disabled = true;
     startBtn.className = 'start-btn disabled';
     startBtn.textContent = 'Invalid URL';
     metadata = null;
+    saveHomeState();
   }
 }
 
 startBtn.addEventListener('click', async () => {
-  if (startBtn.disabled) return;
+  if (startBtn.disabled || downloadActive) return;
   const body = {
     url: urlInput.value.trim(),
     useThreads: $('#opt-threads').checked,
@@ -104,6 +188,7 @@ startBtn.addEventListener('click', async () => {
     checksum: checksumInput.value.trim(),
     clearTarget: $('#opt-clear').checked,
   };
+  saveHomeState();
   startBtn.disabled = true;
   startBtn.textContent = 'Starting...';
   try {
@@ -114,13 +199,13 @@ startBtn.addEventListener('click', async () => {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed');
+    downloadActive = true;
+    lastDownloadState = data;
     showPage('download');
     updateDownloadUI(data);
   } catch (e) {
     alert(e.message);
-    startBtn.disabled = false;
-    startBtn.className = 'start-btn ready';
-    startBtn.textContent = 'Start Download';
+    restoreHomeState();
   }
 });
 
@@ -129,16 +214,41 @@ function connectSSE() {
   evtSource = new EventSource('/api/download/events');
   evtSource.onmessage = (e) => {
     const data = JSON.parse(e.data);
-    if ($('#page-download').classList.contains('active')) updateDownloadUI(data);
-    Charts.drawSpeedometer($('#speed-gauge'), data.speed || 0);
-    const el = $('#gauge-speed');
-    if (el) el.textContent = formatSpeed(data.speed || 0);
+    if (data.state === 'idle' && lastDownloadState && isSessionActive(lastDownloadState.state)) {
+      return;
+    }
+    if (data.state !== 'idle' || data.filename) {
+      lastDownloadState = data;
+    }
+    const wasActive = downloadActive;
+    downloadActive = isSessionActive(data.state);
+    if (wasActive && !downloadActive && ['stopped', 'completed', 'failed'].includes(data.state)) {
+      if ($('#page-home').classList.contains('active')) restoreHomeState();
+    }
+    if ($('#page-download').classList.contains('active')) {
+      updateDownloadUI(lastDownloadState || data);
+    }
+    const speed = (lastDownloadState || data).speed || 0;
+    if ($('#page-stats').classList.contains('active') || speed > 0) {
+      Charts.drawSpeedometer($('#speed-gauge'), speed);
+      const el = $('#gauge-speed');
+      if (el) el.textContent = formatSpeed(speed);
+    }
+  };
+  evtSource.onerror = () => {
+    if (evtSource.readyState === EventSource.CLOSED) {
+      evtSource = null;
+      setTimeout(connectSSE, 1000);
+    }
   };
 }
 
 function updateDownloadUI(d) {
+  if (!d) return;
   const status = $('#dl-status');
-  status.textContent = (d.state || 'idle').toUpperCase();
+  let badge = d.state || 'idle';
+  if (d.paused && d.state === 'downloading') badge = 'paused';
+  status.textContent = badge.toUpperCase();
   status.className = 'status-badge ' + (d.paused ? 'paused' : d.state);
 
   $('#dl-filename').textContent = d.filename || '—';
@@ -153,9 +263,9 @@ function updateDownloadUI(d) {
     const pos = Math.min(Math.max(pct, 2), 98);
     runner.style.left = pos + '%';
     trackFill.style.width = pos + '%';
-    const active = ['downloading', 'merging'].includes(d.state) && !d.paused;
-    track.classList.toggle('running', active);
-    track.classList.toggle('paused', d.paused);
+    const running = ['downloading', 'merging'].includes(d.state) && !d.paused;
+    track.classList.toggle('running', running);
+    track.classList.toggle('paused', !!d.paused);
   }
 
   $('#dl-speed').textContent = formatSpeed(d.speed || 0);
@@ -165,9 +275,10 @@ function updateDownloadUI(d) {
 
   const corrupt = d.state === 'corruption';
   const complete = d.state === 'completed';
-  const active = ['downloading', 'paused', 'merging'].includes(d.state);
+  const stopped = d.state === 'stopped';
+  const showControls = ['downloading', 'paused', 'merging'].includes(d.state);
 
-  $('#dl-controls').classList.toggle('hidden', !active);
+  $('#dl-controls').classList.toggle('hidden', !showControls);
   $('#corruption-panel').classList.toggle('hidden', !corrupt);
   $('#complete-panel').classList.toggle('hidden', !complete);
 
@@ -180,31 +291,56 @@ function updateDownloadUI(d) {
     $('#dl-output').textContent = d.outputPath || '';
     if (track) track.classList.remove('running');
   }
+  if (stopped && track) track.classList.remove('running');
+}
+
+async function sendControl(action) {
+  try {
+    const res = await fetch('/api/download/control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    lastDownloadState = data;
+    downloadActive = isSessionActive(data.state);
+    updateDownloadUI(data);
+    if ($('#page-home').classList.contains('active')) restoreHomeState();
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 $$('.ctrl-btn[data-action]').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    await fetch('/api/download/control', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: btn.dataset.action }),
-    });
-  });
+  btn.addEventListener('click', () => sendControl(btn.dataset.action));
 });
 
 $$('.ctrl-btn[data-recover]').forEach(btn => {
   btn.addEventListener('click', async () => {
-    await fetch('/api/download/recover', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: btn.dataset.recover }),
-    });
-    $('#corruption-panel').classList.add('hidden');
-    $('#dl-controls').classList.remove('hidden');
+    try {
+      const res = await fetch('/api/download/recover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: btn.dataset.recover }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      lastDownloadState = data;
+      downloadActive = true;
+      updateDownloadUI(data);
+      $('#corruption-panel').classList.add('hidden');
+      $('#dl-controls').classList.remove('hidden');
+    } catch (e) {
+      console.error(e);
+    }
   });
 });
 
-$('#back-home').addEventListener('click', () => showPage('home'));
+$('#back-home').addEventListener('click', () => {
+  saveHomeState();
+  showPage('home');
+});
 
 async function loadStats() {
   try {
@@ -222,10 +358,9 @@ async function loadStats() {
     Charts.drawHistoryChart($('#history-chart'), data.recent || []);
     Charts.drawTrustRadar($('#trust-chart'), data.recent || []);
 
-    if (data.recent?.length) {
-      Charts.drawSpeedometer($('#speed-gauge'), data.recent[data.recent.length - 1].speed || 0);
-      $('#gauge-speed').textContent = formatSpeed(data.recent[data.recent.length - 1].speed || 0);
-    }
+    const liveSpeed = lastDownloadState?.speed ?? data.recent?.[data.recent.length - 1]?.speed ?? 0;
+    Charts.drawSpeedometer($('#speed-gauge'), liveSpeed);
+    $('#gauge-speed').textContent = formatSpeed(liveSpeed);
   } catch {}
 }
 
