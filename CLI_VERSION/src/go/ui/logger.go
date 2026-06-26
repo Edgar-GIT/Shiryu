@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	util "shiryu/UTILS"
 )
 
 type Logger struct {
@@ -53,7 +55,7 @@ func (l *Logger) LogSummary(filename string, sizeBytes int64, duration time.Dura
 	l.Log("=== DOWNLOAD SUMMARY ===")
 	l.Log(fmt.Sprintf("File: %s", filename))
 	l.Log(fmt.Sprintf("Size: %d bytes", sizeBytes))
-	l.Log(fmt.Sprintf("Duration: %s", formatDuration(duration)))
+	l.Log(fmt.Sprintf("Duration: %s", util.FormatDuration(duration.Seconds())))
 	l.Log(fmt.Sprintf("Average Speed: %.2f MB/s", speed))
 	l.Log(fmt.Sprintf("Workers Used: %d", workers))
 

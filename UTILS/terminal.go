@@ -1,12 +1,19 @@
-package utils
+package util
 
 import (
 	"os"
+	"os/exec"
 	"runtime"
 )
 
-func ClearTerminal() {
-	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
-		os.Stderr.WriteString("\033[2J\033[H")
+func ClearScreen() {
+	if runtime.GOOS == "windows" {
+		cmd := exec.Command("cmd", "/c", "cls")
+		cmd.Stdout = os.Stdout
+		_ = cmd.Run()
+		return
 	}
+	cmd := exec.Command("clear")
+	cmd.Stdout = os.Stdout
+	_ = cmd.Run()
 }

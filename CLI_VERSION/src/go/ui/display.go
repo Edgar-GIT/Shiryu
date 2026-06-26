@@ -2,263 +2,126 @@ package ui
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
-	"runtime"
 	"strings"
 	"time"
+
+	util "shiryu/UTILS"
 )
 
-const (
-	ColorReset   = "\033[0m"
-	ColorRed     = "\033[31m"
-	ColorGreen   = "\033[32m"
-	ColorYellow  = "\033[33m"
-	ColorBlue    = "\033[34m"
-	ColorCyan    = "\033[36m"
-	ColorMagenta = "\033[35m"
-)
-
-func ClearScreen() {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "linux", "darwin":
-		cmd = exec.Command("clear")
-	case "windows":
-		cmd = exec.Command("cmd", "/c", "cls")
-	default:
-		return
-	}
-	cmd.Stdout = os.Stdout
-	_ = cmd.Run()
-}
-
-func PrintBanner() {
-	banner := `
- $$$$$$\  $$\       $$\                               
-$$  __$$\ $$ |      \__|                              
-$$ /  \__|$$$$$$$\  $$\  $$$$$$\  $$\   $$\ $$\   $$\ 
-\$$$$$$\  $$  __$$\ $$ |$$  __$$\ $$ |  $$ |$$ |  $$ |
- \____$$\ $$ |  $$ |$$ |$$ |      $$ |  $$ |$$ |  $$ |
-$$\   $$ |$$ |  $$ |$$ |$$ |      $$ |  $$ |$$ |  $$ |
-\$$$$$$  |$$ |  $$ |$$ |$$ |      \$$$$$$$ |\$$$$$$  |
- \______/ \__|  \__|\__|\__|       \____$$ | \______/ 
-                                  $$\   $$ |          
-                                  \$$$$$$  |          
-                                   \______/           `
-
-	lines := strings.Split(banner, "\n")
-	colors := []string{
-		"\033[38;5;26m", "\033[38;5;27m", "\033[38;5;32m", "\033[38;5;33m", "\033[38;5;39m",
-		"\033[38;5;38m", "\033[38;5;44m", "\033[38;5;43m", "\033[38;5;49m", "\033[38;5;48m",
-		"\033[38;5;49m", "\033[38;5;43m", "\033[38;5;44m",
-	}
-
-	for i, line := range lines {
-		color := colors[i%len(colors)]
-		fmt.Printf("%s%s%s\n", color, line, ColorReset)
-	}
-
-	box := fmt.Sprintf(`%s+-----------------------------------------------------------+
-| %sA web, ultra fast, download booster%s | %sversion: 2.0.0%s      |
-|                    %sGithub: Edgar-GIT%s                      |
-+-----------------------------------------------------------+%s
-`,
-		"\033[38;5;205m",
-		"\033[38;5;51m",
-		"\033[38;5;205m",
-		"\033[38;5;255m",
-		"\033[38;5;205m",
-		"\033[38;5;51m",
-		"\033[38;5;205m",
-		ColorReset)
-	fmt.Println(box)
-}
-
-func PromptURL() (string, error) {
-	fmt.Print(ColorGreen + "Enter download URL: " + ColorReset)
-	var url string
-	_, err := fmt.Scanln(&url)
-	return url, err
-}
+func ClearScreen()  { util.ClearScreen() }
+func PrintBanner() { util.PrintBanner() }
 
 func PromptUseThreads(available bool) bool {
 	if !available {
-		fmt.Println(ColorYellow + "NOTE: Server does not support parallel downloads (no Range header support)" + ColorReset)
-		fmt.Println(ColorYellow + "Download will proceed sequentially" + ColorReset)
+		fmt.Println(util.Yellow + "NOTE: Server does not support parallel downloads (no Range header support)" + util.Reset)
+		fmt.Println(util.Yellow + "Download will proceed sequentially" + util.Reset)
 		return false
 	}
-
-	fmt.Print(ColorCyan + "Use multiple threads for faster download? [y/n]: " + ColorReset)
+	fmt.Print(util.Cyan + "Use multiple threads for faster download? [y/n]: " + util.Reset)
 	var input string
 	fmt.Scanln(&input)
 	return strings.ToLower(input) == "y" || strings.ToLower(input) == "yes"
 }
 
 func PromptIntegrityCheck() bool {
-	fmt.Print(ColorCyan + "Enable integrity check? [y/n]: " + ColorReset)
+	fmt.Print(util.Cyan + "Enable integrity check? [y/n]: " + util.Reset)
 	var input string
 	fmt.Scanln(&input)
 	return strings.ToLower(input) == "y" || strings.ToLower(input) == "yes"
 }
 
 func PromptChecksum() string {
-	fmt.Print(ColorYellow + "Enter expected SHA256 checksum (or press Enter to skip): " + ColorReset)
+	fmt.Print(util.Yellow + "Enter expected SHA256 checksum (or press Enter to skip): " + util.Reset)
 	var input string
 	fmt.Scanln(&input)
 	return input
 }
 
-func PrintFileInfo(filename string, sizeBytes int64) {
-	fmt.Printf("%sFile: %s%s\n", ColorYellow, filename, ColorReset)
-	fmt.Printf("%sSize: %s%s\n", ColorYellow, formatBytes(sizeBytes), ColorReset)
+func PrintFileInfo(filename string, size int64) {
+	fmt.Printf("%sFile: %s%s\n", util.Yellow, filename, util.Reset)
+	fmt.Printf("%sSize: %s%s\n", util.Yellow, util.FormatBytes(size), util.Reset)
 }
 
 func PrintThreadingInfo(available bool, workers int) {
 	if !available {
-		fmt.Println(ColorRed + "✗ Threading unavailable (Range header unsupported)" + ColorReset)
+		fmt.Println(util.Red + "✗ Threading unavailable (Range header unsupported)" + util.Reset)
 	} else {
-		fmt.Printf("%s✓ Threading enabled with %d workers%s\n", ColorGreen, workers, ColorReset)
+		fmt.Printf("%s✓ Threading enabled with %d workers%s\n", util.Green, workers, util.Reset)
 	}
 }
 
-func UpdateProgress(progress int64, total int64, threadCount int, speed float64, eta time.Duration) {
-	percentage := float64(progress) / float64(total) * 100
-	statusBar := buildProgressBar(percentage)
-
-	fmt.Printf("\r%s[%s] %.2f%% | Speed: %.2f MB/s | Threads: %d | ETA: %s%s",
-		ColorBlue, statusBar, percentage, speed, threadCount, formatDuration(eta), ColorReset)
+func RenderDownloadScreen(progress, total int64, speed float64, elapsed, eta time.Duration, paused bool) {
+	util.ClearScreen()
+	pct := 0.0
+	if total > 0 {
+		pct = float64(progress) / float64(total) * 100
+	}
+	bar := util.ProgressBar(pct, 30)
+	status := util.Green + "DOWNLOADING"
+	if paused {
+		status = util.Yellow + "PAUSED"
+	}
+	fmt.Printf("\n%s%s%s\n", status, util.Reset, strings.Repeat(" ", 20))
+	fmt.Printf("\n%s[%s%s] %s%.1f%%%s\n", util.Blue, bar, util.Blue, util.White, pct, util.Reset)
+	fmt.Printf("\n%s%s%s / %s%s\n", util.Cyan, util.FormatBytes(progress), util.Dim, util.FormatBytes(total), util.Reset)
+	fmt.Printf("\n%sSpeed:%s %s\n", util.Dim, util.Reset, util.FormatSpeed(speed))
+	fmt.Printf("\n%sElapsed:%s %s  %s|  %sRemaining:%s %s\n",
+		util.Dim, util.Reset, util.FormatDuration(elapsed.Seconds()),
+		util.Dim, util.Dim, util.Reset, util.FormatDuration(eta.Seconds()))
+	fmt.Println()
+	fmt.Printf("  %s[CONTINUE]%s  %s[PAUSE]%s  %s[RESTART]%s  %s[STOP]%s\n",
+		util.Green, util.Reset, util.Yellow, util.Reset, util.Magenta, util.Reset, util.Red, util.Reset)
+	fmt.Printf("\n%sType a command:%s continue | pause | restart | stop\n", util.Dim, util.Reset)
 }
 
-func UpdateDetailedProgress(progress int64, total int64, threadProgresses map[int]interface{}, speed float64, eta time.Duration) {
-	percentage := float64(progress) / float64(total) * 100
-	statusBar := buildProgressBar(percentage)
-
-	fmt.Printf("\r%s[%s] %.2f%% | Speed: %.2f MB/s | ETA: %s%s",
-		ColorBlue, statusBar, percentage, speed, formatDuration(eta), ColorReset)
-
-	fmt.Printf("\n%sThread Progress:%s\n", ColorCyan, ColorReset)
-	for id := range threadProgresses {
-		fmt.Printf("  Thread %d: processing...\n", id)
-	}
+func PrintDownloadSummary(filename string, size int64, duration time.Duration, speed float64, workers int, outputPath string) {
+	fmt.Printf("\n%s=== Download Complete ===%s\n", util.Green, util.Reset)
+	fmt.Printf("%sFile:%s %s\n", util.Yellow, util.Reset, filename)
+	fmt.Printf("%sDownloaded Size:%s %s\n", util.Yellow, util.Reset, util.FormatBytes(size))
+	fmt.Printf("%sElapsed Time:%s %s\n", util.Yellow, util.Reset, util.FormatDuration(duration.Seconds()))
+	fmt.Printf("%sAverage Speed:%s %s\n", util.Yellow, util.Reset, util.FormatSpeed(speed))
+	fmt.Printf("%sWorkers Used:%s %d\n", util.Yellow, util.Reset, workers)
+	fmt.Printf("%sSaved To:%s %s\n", util.Yellow, util.Reset, outputPath)
 }
 
-func buildProgressBar(percentage float64) string {
-	width := 30
-	filled := int(percentage / 100 * float64(width))
-	if filled > width {
-		filled = width
+func PrintIntegrityTrust(integrity, trust float64) {
+	iColor := util.Green
+	if integrity < 100 {
+		iColor = util.Yellow
 	}
-
-	bar := strings.Repeat("=", filled) + strings.Repeat("-", width-filled)
-	return bar
+	if integrity < 50 {
+		iColor = util.Red
+	}
+	tColor := util.Green
+	if trust < 70 {
+		tColor = util.Yellow
+	}
+	if trust < 50 {
+		tColor = util.Red
+	}
+	fmt.Printf("\n%sIntegrity:%s %s%.1f%%%s\n", util.Cyan, util.Reset, iColor, integrity, util.Reset)
+	fmt.Printf("%sTrust:%s %s%.1f%%%s\n", util.Cyan, util.Reset, tColor, trust, util.Reset)
 }
 
-func formatDuration(d time.Duration) string {
-	if d < 0 {
-		d = 0
-	}
-	hours := int(d.Hours())
-	minutes := int(d.Minutes()) % 60
-	seconds := int(d.Seconds()) % 60
-
-	if hours > 0 {
-		return fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
-	}
-	return fmt.Sprintf("%02d:%02d", minutes, seconds)
-}
-
-func PrintDownloadSummary(filename string, sizeBytes int64, duration time.Duration, speed float64, workers int, outputPath string) {
-	fmt.Printf("%s=== Download Complete ===%s\n", ColorGreen, ColorReset)
-	fmt.Printf("%sFile:%s %s\n", ColorYellow, ColorReset, filename)
-	fmt.Printf("%sDownloaded Size:%s %s\n", ColorYellow, ColorReset, formatBytes(sizeBytes))
-	fmt.Printf("%sElapsed Time:%s %s\n", ColorYellow, ColorReset, formatDuration(duration))
-	fmt.Printf("%sAverage Speed:%s %.2f MB/s\n", ColorYellow, ColorReset, speed)
-	fmt.Printf("%sWorkers Used:%s %d\n", ColorYellow, ColorReset, workers)
-	fmt.Printf("%sSaved To:%s %s\n", ColorYellow, ColorReset, outputPath)
-}
-
-func formatBytes(sizeBytes int64) string {
-	if sizeBytes < 0 {
-		sizeBytes = 0
-	}
-
-	const unit = 1024.0
-	size := float64(sizeBytes)
-	units := []string{"B", "KB", "MB", "GB", "TB"}
-	for _, suffix := range units {
-		if size < unit || suffix == units[len(units)-1] {
-			if suffix == "B" {
-				return fmt.Sprintf("%d %s", sizeBytes, suffix)
-			}
-			return fmt.Sprintf("%.2f %s", size, suffix)
-		}
-		size /= unit
-	}
-	return fmt.Sprintf("%d B", sizeBytes)
-}
-
-func PrintIntegrityCheck(computed string, expected string, matches bool) {
-	if matches {
-		fmt.Printf("%s✓ Checksum match - file integrity confirmed%s\n", ColorGreen, ColorReset)
-	} else {
-		fmt.Printf("%s✗ Checksum mismatch%s\n", ColorRed, ColorReset)
-		fmt.Printf("%sComputed: %s%s\n", ColorYellow, computed, ColorReset)
-		fmt.Printf("%sExpected: %s%s\n", ColorYellow, expected, ColorReset)
-	}
-}
-
-func ComputeChecksumSimilarity(a, b string) float64 {
-	a = strings.ToLower(strings.TrimSpace(a))
-	b = strings.ToLower(strings.TrimSpace(b))
-	if a == "" || b == "" {
-		return 0.0
-	}
-	maxLen := len(a)
-	if len(b) > maxLen {
-		maxLen = len(b)
-	}
-	minLen := len(a)
-	if len(b) < minLen {
-		minLen = len(b)
-	}
-	matched := 0
-	for i := 0; i < minLen; i++ {
-		if a[i] == b[i] {
-			matched++
-		}
-	}
-	return (float64(matched) / float64(maxLen)) * 100.0
-}
-
-func PrintIntegrityCheckEnhanced(computed string, expected string, matches bool, percent float64) {
-	if strings.TrimSpace(expected) == "" {
-		fmt.Printf("%sComputed SHA256:%s %s\n", ColorYellow, ColorReset, computed)
-		return
-	}
-
-	if matches {
-		fmt.Printf("%s✓ Checksum match - file integrity confirmed (%s%.2f%%%s)%s\n", ColorGreen, ColorYellow, percent, ColorGreen, ColorReset)
-		fmt.Printf("%sComputed:%s %s\n", ColorCyan, ColorReset, computed)
-	} else {
-		fmt.Printf("%s✗ Checksum mismatch (%s%.2f%%%s)%s\n", ColorRed, ColorYellow, percent, ColorRed, ColorReset)
-		fmt.Printf("%sComputed:%s %s\n", ColorCyan, ColorReset, computed)
-		fmt.Printf("%sExpected:%s %s\n", ColorMagenta, ColorReset, expected)
-	}
+func PrintCorruptionPrompt(pct float64) {
+	fmt.Printf("\n%s⚠ Corruption detected near %.1f%%%s\n", util.Red, pct, util.Reset)
+	fmt.Printf("%s[1]%s Restart full download\n", util.Magenta, util.Reset)
+	fmt.Printf("%s[2]%s Resume from corruption point (%.1f%%)\n", util.Cyan, util.Reset, pct)
+	fmt.Print(util.Yellow + "Choose [1/2]: " + util.Reset)
 }
 
 func PrintError(msg string) {
-	fmt.Printf("%s✗ Error: %s%s\n", ColorRed, msg, ColorReset)
+	fmt.Printf("%s✗ Error: %s%s\n", util.Red, msg, util.Reset)
 }
 
 func PrintSuccess(msg string) {
-	fmt.Printf("%s✓ %s%s\n", ColorGreen, msg, ColorReset)
+	fmt.Printf("%s✓ %s%s\n", util.Green, msg, util.Reset)
 }
 
 func PrintInfo(msg string) {
-	fmt.Printf("%sℹ %s%s\n", ColorCyan, msg, ColorReset)
+	fmt.Printf("%sℹ %s%s\n", util.Cyan, msg, util.Reset)
 }
 
 func PrintWarning(msg string) {
-	fmt.Printf("%s⚠ %s%s\n", ColorYellow, msg, ColorReset)
+	fmt.Printf("%s⚠ %s%s\n", util.Yellow, msg, util.Reset)
 }
